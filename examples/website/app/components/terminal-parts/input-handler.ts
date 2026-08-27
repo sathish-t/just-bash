@@ -122,7 +122,6 @@ export function createInputHandler(term: Terminal, bash: Bash) {
     "whoami",
     "hostname",
     "uname",
-    "curl",
     "wget",
     // Bash builtins
     ".",

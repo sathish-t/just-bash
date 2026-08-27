@@ -30,7 +30,6 @@ interface ShellOptions {
   cwd?: string;
   files?: Record<string, string>;
   env?: Record<string, string>;
-  network?: boolean;
 }
 
 class VirtualShell {
@@ -60,11 +59,6 @@ class VirtualShell {
         TERM: "xterm-256color",
         ...options.env,
       },
-      // Network disabled by default; use --network to enable
-      network:
-        options.network === true
-          ? { dangerouslyAllowFullInternetAccess: true }
-          : undefined,
     });
     this.initialization = this.seedFiles(overlayFs, options.files);
 
@@ -225,7 +219,7 @@ Reads from real filesystem, writes stay in memory (OverlayFs).
 function parseArgs(): ShellOptions {
   const args = process.argv.slice(2);
   // @banned-pattern-ignore: static keys only, never accessed with user input
-  const options: ShellOptions = {}; // Network disabled by default
+  const options: ShellOptions = {};
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--cwd" && args[i + 1]) {
@@ -239,10 +233,6 @@ function parseArgs(): ShellOptions {
         console.error(`Error reading files from ${filePath}:`, error);
         process.exit(1);
       }
-    } else if (args[i] === "--network") {
-      options.network = true;
-    } else if (args[i] === "--no-network") {
-      options.network = false;
     } else if (args[i] === "--help" || args[i] === "-h") {
       console.log(`
 Usage: pnpm shell [options]
@@ -253,13 +243,10 @@ writes stay in memory (copy-on-write).
 Options:
   --cwd <dir>         Set initial working directory (default: /)
   --files <json-file> Seed copy-on-write files from a JSON object
-  --network           Enable network access (disabled by default)
-  --no-network        Disable network access (default)
   --help, -h          Show this help message
 
 Example:
   pnpm shell
-  pnpm shell --network
 `);
       process.exit(0);
     }

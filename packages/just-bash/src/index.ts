@@ -11,22 +11,13 @@ export type {
   BashLogger,
   BashOptions,
   ExecOptions,
-  JavaScriptConfig,
 } from "./Bash.js";
 export { Bash } from "./Bash.js";
 export type {
   AllCommandName,
   CommandName,
-  JavaScriptCommandName,
-  NetworkCommandName,
-  PythonCommandName,
 } from "./commands/registry.js";
-export {
-  getCommandNames,
-  getJavaScriptCommandNames,
-  getNetworkCommandNames,
-  getPythonCommandNames,
-} from "./commands/registry.js";
+export { getCommandNames } from "./commands/registry.js";
 // Custom commands API
 export type {
   CommandContextOptions,
@@ -79,18 +70,6 @@ export {
   ReadWriteFs,
   type ReadWriteFsOptions,
 } from "./fs/read-write-fs/index.js";
-export type {
-  AllowedUrl,
-  AllowedUrlEntry,
-  NetworkConfig,
-  RequestTransform,
-  SecureFetch,
-} from "./network/index.js";
-export {
-  NetworkAccessDeniedError,
-  RedirectNotAllowedError,
-  TooManyRedirectsError,
-} from "./network/index.js";
 // Parser
 export { parse } from "./parser/parser.js";
 export type {

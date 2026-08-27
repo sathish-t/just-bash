@@ -23,7 +23,6 @@ const NOSCRIPT_CONTENT = `
   - Pure TypeScript implementation
   - In-memory virtual filesystem
   - Secure sandboxed execution
-  - Network access with URL filtering
   - Vercel Sandbox compatible API
 
   INSTALLATION
@@ -55,7 +54,7 @@ const NOSCRIPT_CONTENT = `
     uniq, wc, xargs
 
   Data Processing:
-    jq (JSON), python3 (Pyodide), sqlite3, xan (CSV), yq (YAML)
+    jq (JSON)
 
   Navigation & Environment:
     basename, cd, dirname, du, echo, env, export, find,

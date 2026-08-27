@@ -1085,28 +1085,10 @@ export class DefenseInDepthBox {
     const excludedViolationTypes = new Set(
       this.config.excludeViolationTypes ?? [],
     );
-
-    // IPC-related globals (process.send, process.channel, process.connected)
-    // are only blocked in worker contexts (WorkerDefenseInDepth). In the main
-    // thread, blocking them interferes with legitimate IPC usage by test
-    // runners, process managers, and Node.js internals that share the process
-    // object and may access these properties during async operations within
-    // the AsyncLocalStorage context.
-    const skipInMainThread = new Set<SecurityViolationType>([
-      "process_send",
-      "process_channel",
-      // process.stdout/stderr are used by console.log/debug/error internally.
-      // Blocking them in the main thread breaks Node.js console output and
-      // the defense layer's own diagnostic logging. They ARE blocked in
-      // WorkerDefenseInDepth where the entire worker is sandboxed.
-      "process_stdout",
-      "process_stderr",
-    ]);
     const permanentIntrinsicPatches: BlockedGlobal[] = [];
 
     for (const blocked of blockedGlobals) {
       if (excludedViolationTypes.has(blocked.violationType)) continue;
-      if (skipInMainThread.has(blocked.violationType)) continue;
       if (blocked.strategy === "freeze") {
         permanentIntrinsicPatches.push(blocked);
         continue;
@@ -1152,11 +1134,6 @@ export class DefenseInDepthBox {
     // the blocking proxy (which has no get/defineProperty traps) pass through
     // to the original Proxy constructor, so we can patch revocable in place.
     this.protectProxyRevocable();
-
-    // Note: process.connected is NOT blocked in the main thread — it is a
-    // boolean primitive used by Node.js IPC internals and blocking it
-    // interferes with test runners and process managers. It IS blocked in
-    // WorkerDefenseInDepth where the entire worker is sandboxed.
 
     // Fail closed: if any critical patch failed, throw.
     // Critical patches are those that block the most dangerous escape vectors.
@@ -1689,7 +1666,7 @@ export class DefenseInDepthBox {
    * ```
    *
    * process.mainModule may be undefined in ESM contexts but could exist in
-   * CommonJS workers. We block both reading and setting.
+   * CommonJS contexts. We block both reading and setting.
    */
   private protectProcessMainModule(): void {
     if (typeof process === "undefined") return;

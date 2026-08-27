@@ -15,7 +15,7 @@ just-bash is a TypeScript implementation of a bash interpreter with an in-memory
 - **Trust level**: ZERO — the script is completely untrusted
 
 ### 1B. Malicious Data Source
-- **Who**: External data consumed by scripts (HTTP responses, file content, stdin)
+- **Who**: External data consumed by scripts (file content, stdin)
 - **Capability**: Control over data that flows through expansion, variable assignment, command arguments
 - **Goal**: Exploit the interpreter via crafted data (prototype pollution, injection via IFS, path traversal via filenames)
 - **Trust level**: ZERO — data is untrusted
@@ -32,7 +32,7 @@ just-bash is a TypeScript implementation of a bash interpreter with an in-memory
 
 The following components are **trusted** and outside the scope of just-bash's runtime defenses:
 
-- **Host-provided `fs`, `fetch`, `customCommands`, and transform plugins**: These are supplied by the embedding application. A compromised or malicious host hook can bypass all sandboxing by design — just-bash protects untrusted *scripts*, not untrusted *hosts*.
+- **Host-provided `fs`, `customCommands`, and transform plugins**: These are supplied by the embedding application. A compromised or malicious host hook can bypass all sandboxing by design — just-bash protects untrusted *scripts*, not untrusted *hosts*.
 - **The Node.js runtime and underlying OS**: just-bash assumes the Node.js binary, V8, and OS kernel are not compromised. Exploits targeting V8 internals or kernel vulnerabilities are out of scope.
 - **Dependencies**: Supply-chain attacks via npm dependencies are a deployment-level concern (addressed by lockfiles, audits, etc.), not a runtime defense.
 - **Direct host filesystem access**: The embedding application and other host processes are trusted not to mutate a `ReadWriteFs` root concurrently with sandbox operations. Node.js does not expose portable descriptor-relative filesystem APIs, so `ReadWriteFs` cannot make pathname validation, private-file metadata changes, and entry replacement atomic against an external host actor. Mutations submitted through overlapping `ReadWriteFs` roots are serialized within the process; unrelated roots are independent. This process-global queue is unbounded and not integrated with script cancellation, so a long mutation can delay later operations on overlapping roots after its requester is aborted. Content writes to special files are rejected to prevent blocking opens from holding an overlapping-root mutation slot indefinitely.
@@ -58,12 +58,11 @@ The following components are **trusted** and outside the scope of just-bash's ru
 │  │  └─────────────┘    └──────────────┘    │ maxStrLen   │  │  │
 │  │                                         └──────┬──────┘  │  │
 │  │                                                │         │  │
-│  │  ┌──────────────────┬──────────────────┬───────┴──────┐  │  │
-│  │  │ Filesystem       │ Network          │ Commands     │  │  │
-│  │  │ (InMemoryFs/     │ (Allow-list)     │ (Registry)   │  │  │
-│  │  │  OverlayFs)      │ Default: OFF     │ ~79 built-in │  │  │
-│  │  │ Symlinks: DENY   │                  │ No spawn()   │  │  │
-│  │  └──────────────────┴──────────────────┴──────────────┘  │  │
+│  │  ┌───────────────────────────┬──────────┴───────────┐  │  │
+│  │  │ Filesystem                │ Commands             │  │  │
+│  │  │ (InMemoryFs/OverlayFs)    │ (Registry)           │  │  │
+│  │  │ Symlinks: DENY            │ No spawn()           │  │  │
+│  │  └───────────────────────────┴──────────────────────┘  │  │
 │  │                                                           │  │
 │  │  ┌───────────────────────────────────────────────────┐    │  │
 │  │  │ Defense-in-Depth (SECONDARY)                      │    │  │
@@ -74,7 +73,7 @@ The following components are **trusted** and outside the scope of just-bash's ru
 │  │  └───────────────────────────────────────────────────┘    │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
-│  Host filesystem, process.env, network, child_process           │
+│  Host filesystem, process.env, child_process                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -82,11 +81,9 @@ The following components are **trusted** and outside the scope of just-bash's ru
 
 **TB2 — Interpreter → Filesystem**: The interpreter issues filesystem operations. The FS layer must confine all access to the sandbox root, block symlink traversal, and prevent writes to the real filesystem.
 
-**TB3 — Interpreter → Network**: Network access disabled by default. When enabled, URLs must pass the allow-list.
+**TB3 — Interpreter → Host Process**: The interpreter must never spawn child processes, access host environment variables, or reach Node.js internals (process.binding, require, import()).
 
-**TB4 — Interpreter → Host Process**: The interpreter must never spawn child processes, access host environment variables, or reach Node.js internals (process.binding, require, import()).
-
-**TB5 — Data → Variable/Key Space**: User-controlled data becomes JS object keys (env vars, AWK variables, associative array keys). Must use null-prototype objects or Maps to prevent prototype pollution.
+**TB4 — Data → Variable/Key Space**: User-controlled data becomes JS object keys (env vars, AWK variables, associative array keys). Must use null-prototype objects or Maps to prevent prototype pollution.
 
 ---
 
@@ -130,18 +127,7 @@ The following components are **trusted** and outside the scope of just-bash's ru
 | Host-planted hard link | Content or metadata mutation reaches another name outside the root | `ReadWriteFs` copy-on-write replaces shared-inode content and metadata entries | `src/fs/read-write-fs/read-write-fs.ts` |
 | Real path disclosure | Error messages reveal host paths | `sanitizeError()` strips real paths from ErrnoException; `sanitizeSymlinkTarget()` strips absolute paths | `src/fs/overlay-fs/overlay-fs.ts`, `src/fs/real-fs-utils.ts` |
 
-### 3.4 Network
-
-| Vector | Description | Defense | Files |
-|--------|-------------|---------|-------|
-| Arbitrary access | `curl evil.com` | Network disabled by default; curl only registered when NetworkConfig provided | `src/commands/registry.ts` |
-| SSRF via redirects | Redirect to internal service | Each redirect validated against allow-list; manual redirect handling | `src/network/fetch.ts` |
-| Response bomb | Huge response body | maxResponseSize (10MB) enforced via Content-Length and streaming | `src/network/fetch.ts` |
-| Protocol restriction | Only http/https allowed | Allow-list rejects all other protocols | `src/network/allow-list.ts` |
-| URL manipulation | `https://evil.com@good.com` | Full URL parsing via `new URL()` before matching | `src/network/allow-list.ts` |
-| Header pollution | Malicious response headers | Response headers stored in `Object.create(null)` | `src/network/fetch.ts` |
-
-### 3.5 Code Execution Escape
+### 3.4 Code Execution Escape
 
 | Vector | Description | Defense | Files |
 |--------|-------------|---------|-------|
@@ -163,25 +149,21 @@ The following components are **trusted** and outside the scope of just-bash's ru
 | **dynamic import()** | `import('/tmp/evil.js')` | Context-aware loader hooks block builtins and executable URL schemes where supported; other supported runtimes retain best-effort secondary controls (see §4.1) | `src/security/defense-in-depth-box.ts` |
 | child_process | spawn/exec/fork | Not imported anywhere; no code path from interpreter | Architecture |
 
-### 3.6 Information Disclosure
+### 3.5 Information Disclosure
 
 | Vector | Description | Defense | Files |
 |--------|-------------|---------|-------|
 | process.env | Leak API keys, secrets | Blocked by defense-in-depth | `src/security/blocked-globals.ts` |
 | process.argv | CLI args with secrets | Blocked by defense-in-depth | `src/security/blocked-globals.ts` |
 | process.execPath | Reveal Node.js path | Blocked via defineProperty | `src/security/defense-in-depth-box.ts` |
-| process.stdout/stderr | Bypass interpreter output | Blocked by defense-in-depth (workers); skipped in main thread due to console.log dependency | `src/security/blocked-globals.ts` |
-| process.connected | IPC connection status | Blocked in **worker contexts only** (WorkerDefenseInDepth) | `src/security/defense-in-depth-box.ts` |
-| process.send | IPC messaging to parent | Blocked in **worker contexts only** (WorkerDefenseInDepth); main thread skipped to avoid interfering with test runners/process managers | `src/security/blocked-globals.ts` |
-| process.channel | IPC channel access | Blocked in **worker contexts only** (WorkerDefenseInDepth); main thread skipped for same reason | `src/security/blocked-globals.ts` |
 | Host PID/UID | Expose process identity | Virtualized (processInfo option, defaults: pid=1, uid=1000) | `src/Bash.ts` |
 | hostname/whoami/uname | System enumeration | Return generic/virtual values | `src/commands/hostname/` |
 | Host timezone | `date` leaks host TZ via `%Z`/`%z` or time values | Defaults to UTC; only honored when the host explicitly sets `$TZ` to an IANA zone | `src/commands/date/date.ts` |
-| Error messages | Reveal file paths | `sanitizeError()` in FS layers + `sanitizeErrorMessage()` at all error choke points (builtin-dispatch, Bash.ts, CLI, Python bridge) | `src/fs/real-fs-utils.ts`, `src/interpreter/builtin-dispatch.ts`, `src/Bash.ts`, `src/cli/just-bash.ts` |
+| Error messages | Reveal file paths | `sanitizeError()` in FS layers + `sanitizeErrorMessage()` at all error choke points (builtin-dispatch, Bash.ts, CLI) | `src/fs/real-fs-utils.ts`, `src/interpreter/builtin-dispatch.ts`, `src/Bash.ts`, `src/cli/just-bash.ts` |
 | Timing side-channels | hrtime, cpuUsage, memoryUsage | Blocked by defense-in-depth | `src/security/blocked-globals.ts` |
 | performance.now() | Sub-ms timing for side-channels | Blocked by defense-in-depth; internal uses pre-capture `_performanceNow` | `src/security/blocked-globals.ts`, `src/timers.ts` |
 
-### 3.7 Denial of Service
+### 3.6 Denial of Service
 
 | Vector | Description | Defense | Files |
 |--------|-------------|---------|-------|
@@ -198,7 +180,7 @@ The following components are **trusted** and outside the scope of just-bash's ru
 | FD exhaustion | `exec N>/dev/null` in loop | `checkFdLimit()` enforces maxFileDescriptors (1024) before every `fileDescriptors.set()` | `src/interpreter/helpers/result.ts` |
 | Glob `**` depth | `**/**/**/**/**/**/x` | MAX_GLOBSTAR_SEGMENTS (5) rejects patterns with excessive recursive segments | `src/shell/glob.ts` |
 
-### 3.8 Privilege Escalation
+### 3.7 Privilege Escalation
 
 | Vector | Description | Defense | Files |
 |--------|-------------|---------|-------|
@@ -207,7 +189,7 @@ The following components are **trusted** and outside the scope of just-bash's ru
 | process.umask() | Modify file permissions | Blocked by defense-in-depth | `src/security/blocked-globals.ts` |
 | chmod/chown | Change file permissions | Operates on virtual FS only | `src/commands/chmod/` |
 
-### 3.9 Prototype Pollution
+### 3.8 Prototype Pollution
 
 | Vector | Description | Defense | Files |
 |--------|-------------|---------|-------|
@@ -215,7 +197,6 @@ The following components are **trusted** and outside the scope of just-bash's ru
 | AWK variables | AWK field/var names | `Object.create(null)` throughout | `src/commands/awk/interpreter/context.ts` |
 | Associative arrays | User-controlled keys | Null-prototype objects | `src/interpreter/` |
 | JQ/query field access | JSON keys from data | `DANGEROUS_KEYS` Set + `safeGet()`/`safeSet()` | `src/commands/query-engine/safe-object.ts` |
-| HTTP response headers | Header names from responses | `Object.create(null)` for header objects | `src/network/fetch.ts` |
 | Env export to commands | Passing env to subprocesses | `mapToRecord()` produces null-prototype objects | `src/helpers/env.ts` |
 | `__defineGetter__`/`__defineSetter__` | Inject getters/setters on prototypes | Blocked by defense-in-depth (strategy: "throw") | `src/security/blocked-globals.ts` |
 | `__lookupGetter__`/`__lookupSetter__` | Introspect prototype getters/setters | Blocked by defense-in-depth (strategy: "throw") | `src/security/blocked-globals.ts` |
@@ -237,7 +218,7 @@ Dynamic `import()` is a language-level keyword, not a property on any object. It
 1. **Context-aware loader hooks** — when `node:module.registerHooks()` is available, builtin and executable URL imports are rejected only from the untrusted async context.
 2. **Scoped host controls** — supported runtimes without contextual hooks still apply the reversible best-effort global and CommonJS defenses.
 3. **Filesystem restrictions** — OverlayFs writes to memory only, and InMemoryFs has no real filesystem backing.
-4. **Architecture** — ordinary shell interpretation does not evaluate JavaScript. The opt-in `js-exec` feature uses a separately hardened worker boundary.
+4. **Architecture** — ordinary shell interpretation does not evaluate JavaScript.
 
 Call `DefenseInDepthBox.getInstance().getStatus()` and require `level: "full"`
 when contextual dynamic-import protection is a deployment requirement. The
@@ -279,52 +260,19 @@ No systematic testing for invalid UTF-8, homograph attacks, or RTL override char
 
 FD exhaustion is now enforced: `checkFdLimit()` is called before every `fileDescriptors.set()` across interpreter.ts, redirections.ts, and subshell-group.ts, enforcing `maxFileDescriptors` (default: 1024). No tests for `/dev/fd/` access — the virtual filesystem doesn't implement `/dev/fd/`.
 
-### 4.7 Python Execution Surface (When Enabled)
-
-**Risk**: MEDIUM (intentional, opt-in, isolation by construction)
-
-When `python: true`, CPython 3.13 Emscripten provides full Python execution via WASM. Unlike the previous Pyodide-based approach, CPython Emscripten has zero JS bridge code — `import js` fails with `ModuleNotFoundError` because the module simply doesn't exist in the binary. No Python-level sandbox is needed; isolation is by construction.
-
-**Build-time restrictions** (capabilities removed from binary):
-- No `-sMAIN_MODULE`: dynamic linking disabled, `dlopen` fails with "dynamic linking not enabled"
-- No `-lnodefs.js`, `-lidbfs.js`, `-lproxyfs.js`, `-lworkerfs.js`: no host FS mount types available
-- No `_ctypes` C extension: `import ctypes` fails with `ImportError`
-- No `_emscripten_run_script`: JS eval not callable from WASM
-- `__emscripten_system` patched to return -1 (no `child_process.spawnSync`)
-- Test modules (`_testcapi`, `_testinternalcapi`, etc.) stripped from binary
-
-**Runtime mitigations**:
-- Disabled by default; must be explicitly enabled via `{ python: true }`
-- 30-second timeout (`maxPythonTimeoutMs`; configurable)
-- Fresh Worker thread per execution (EXIT_RUNTIME; no state leakage between runs)
-- `WorkerDefenseInDepth` with narrowly documented Emscripten compatibility exclusions; an earlier worker-entry guard blocks the exact dangerous CommonJS builtins before CPython loads
-- Stdlib shipped as `.pyc`-only zip in MEMFS (no real FS access, no runtime compilation)
-- 18+ file operations (open, stat, glob, pathlib, shutil, etc.) redirected through `/host` mount
-- C-level file operations (`_io.open`) also confined by Emscripten VFS (no NODEFS/NODERAWFS)
-- HTTP bridge via custom HTTPFS mount at `/_jb_http` (requires `secureFetch` allow-list)
-- Environment variables explicitly passed (no host `process.env` leakage)
-- Raw TCP/UDP sockets blocked by Emscripten ("Host is unreachable")
-- `os.system()` returns -1, `subprocess`/`os.popen()` raise `OSError`
-
-**Accepted behaviors** (not vulnerabilities):
-- Python's `eval()` and `exec()` execute arbitrary Python (same as bash `eval`; no JS escalation path)
-- `/lib` (MEMFS stdlib) is writable within a single execution (each execution is fresh)
-- Symlink targets are readable via `os.readlink()` but not followable outside root
-- CPython's WASM linear memory is not reliably contained by Node worker `resourceLimits`. Queue, deadline, bridge, and HOSTFS size controls bound other resources, but strong heap containment requires process/container isolation or a lower-memory CPython WASM build.
-
-### 4.8 Error Message Information Leakage
+### 4.7 Error Message Information Leakage
 
 **Risk**: LOW (mitigated)
 
-Error sanitization is now systematic: `sanitizeError()` in FS layers (OverlayFs, ReadWriteFs) strips `.path` from `ErrnoException` objects, and `sanitizeErrorMessage()` strips OS paths, Node.js internal module paths (`node:internal/...`), and stack traces from raw error messages at all major choke points (builtin-dispatch catch-all, `Bash.exec()` error handlers including SecurityViolationError and ExecutionLimitError, CLI error outputs, Python FS bridge). Remaining risk is limited to custom commands that catch and re-format errors without using the sanitization function.
+Error sanitization is now systematic: `sanitizeError()` in FS layers (OverlayFs, ReadWriteFs) strips `.path` from `ErrnoException` objects, and `sanitizeErrorMessage()` strips OS paths, Node.js internal module paths (`node:internal/...`), and stack traces from raw error messages at all major choke points (builtin-dispatch catch-all, `Bash.exec()` error handlers including SecurityViolationError and ExecutionLimitError, CLI error outputs). Remaining risk is limited to custom commands that catch and re-format errors without using the sanitization function.
 
-### 4.9 Heredoc Expansion Interaction
+### 4.8 Heredoc Expansion Interaction
 
 **Risk**: LOW
 
 Heredocs with variable expansion are size-limited (10MB) but nested heredocs with complex expansion haven't been exhaustively fuzzed.
 
-### 4.10 Reflect Object Frozen But Available
+### 4.9 Reflect Object Frozen But Available
 
 **Risk**: LOW
 
@@ -339,7 +287,6 @@ Heredocs with variable expansion are size-limited (10MB) but nested heredocs wit
 | **Architecture** (no child_process import) | Primary | Code execution | Very High — no code path exists |
 | **Filesystem** (OverlayFs/InMemoryFs) | Primary | File access | High — central gate functions (`resolveCanonicalPath`) |
 | **Symlink blocking** (default-deny) | Primary | Path traversal | High — zero-extra-I/O validation via path comparison |
-| **Network allow-list** | Primary | Network access | High — default-off, per-redirect validation |
 | **Command registry** | Primary | Command execution | High — only registered JS implementations run |
 | **Execution limits** | Primary | DoS | High — enforced at every loop/call/expansion |
 | **Prototype pollution guards** | Primary | Data integrity | Medium — requires discipline across all new code |
@@ -361,10 +308,8 @@ Heredocs with variable expansion are size-limited (10MB) but nested heredocs wit
 | 4 | Infinite loop | `while true; do :; done` → maxLoopIterations → throw | **BLOCKED** (limits) |
 | 5 | Prototype pollution | `arr[__proto__]=evil` → Map/null-prototype → no effect | **BLOCKED** (data guards) |
 | 6 | dynamic import() escape | Hypothetical JS exec → `import('data:...')` → contextual loader hook | **BLOCKED when status is `level: "full"`; inspect lower levels otherwise** |
-| 7 | Network exfiltration | `curl evil.com` → network off → curl not registered | **BLOCKED** (network isolation) |
 | 8 | process.exit() | No bash→JS path. If bug: defense-in-depth → throw | **BLOCKED** (arch + secondary) |
 | 9 | Brace expansion OOM | `{1..999999999}` → maxBraceExpansionResults → truncated | **BLOCKED** (limits) |
-| 10 | Python escape | Python off by default. If on: worker + defense + virtual FS | **RESIDUAL RISK** (opt-in) |
 | 11 | ReDoS via user regex | `[[ str =~ evil_pattern ]]` → re2js → linear-time match | **BLOCKED** (re2js) |
 | 12 | Path traversal | `cat ../../etc/shadow` → normalize → `isPathWithinRoot()` → ENOENT | **BLOCKED** (primary FS) |
 | 13 | Null byte injection | `cat "file\x00../../etc/passwd"` → `validatePath()` → rejected | **BLOCKED** (path validation) |
@@ -382,19 +327,17 @@ Heredocs with variable expansion are size-limited (10MB) but nested heredocs wit
 
 ## 7. Recommendations for Future Hardening
 
-1. **Runtime isolation for host-realm execution** — require `level: "full"` or use a dedicated worker/process when opt-in JavaScript can reach the host realm.
+1. **Runtime isolation for host-realm execution** — require `level: "full"` or use a dedicated worker/process when untrusted JavaScript can reach the host realm.
 2. ~~**Systematic error message audit**~~ — **IMPLEMENTED**: `sanitizeErrorMessage()` applied at all error choke points; strips OS paths, `node:internal/` paths, and stack traces
 3. **Content Security Policy for output** — Consider sanitizing output to prevent XSS when sandbox output is rendered in web contexts
 4. **Expand fuzzing corpus** — Add grammar rules for trap, job control (`&`, `fg`, `bg`), and deeply nested heredocs with expansion
 5. **Total memory ceiling** — Track total memory allocated per `exec()` call to provide a hard memory ceiling (not just per-object limits)
-6. ~~**process.connected / process.send / process.channel**~~ — **IMPLEMENTED**: Blocked via defense-in-depth (proxy for send/channel, defineProperty for connected)
-7. ~~**process.chdir**~~ — **IMPLEMENTED**: Blocked via defense-in-depth proxy
-8. ~~**import() expression blocking**~~ — **IMPLEMENTED**: `Module._resolveFilename` blocked by defense-in-depth proxy (data: URLs still bypass)
-9. ~~**source/. depth limit**~~ — **IMPLEMENTED**: maxSourceDepth (100) enforced in `handleSource()`
-10. ~~**process.stdout/stderr blocking**~~ — **IMPLEMENTED**: Blocked via defense-in-depth in worker contexts; skipped in main thread (console.log dependency)
-11. ~~**performance.now() blocking**~~ — **IMPLEMENTED**: Blocked via defense-in-depth; internal uses pre-captured `_performanceNow`
-12. ~~**Stack trace sanitization**~~ — **IMPLEMENTED**: `sanitizeErrorMessage()` applied to SecurityViolationError and ExecutionLimitError in `Bash.exec()`; `node:internal/` paths stripped
-13. ~~**FD exhaustion enforcement**~~ — **IMPLEMENTED**: `checkFdLimit()` before every `fileDescriptors.set()` across interpreter, redirections, subshell-group
-14. ~~**Glob pattern depth limit**~~ — **IMPLEMENTED**: MAX_GLOBSTAR_SEGMENTS (5) rejects patterns with excessive `**` segments
-15. ~~**Intl/TextDecoder/TextEncoder audit**~~ — **ACCEPTED RISK**: Used by 40+ internal files; no escape vectors; documented in blocked-globals.ts
-16. ~~**Frozen builtins**~~ — **IMPLEMENTED**: `__defineGetter__`/`__defineSetter__`/`__lookupGetter__`/`__lookupSetter__` blocked; JSON and Math frozen
+6. ~~**process.chdir**~~ — **IMPLEMENTED**: Blocked via defense-in-depth proxy
+7. ~~**import() expression blocking**~~ — **IMPLEMENTED**: `Module._resolveFilename` blocked by defense-in-depth proxy (data: URLs still bypass)
+8. ~~**source/. depth limit**~~ — **IMPLEMENTED**: maxSourceDepth (100) enforced in `handleSource()`
+9. ~~**performance.now() blocking**~~ — **IMPLEMENTED**: Blocked via defense-in-depth; internal uses pre-captured `_performanceNow`
+10. ~~**Stack trace sanitization**~~ — **IMPLEMENTED**: `sanitizeErrorMessage()` applied to SecurityViolationError and ExecutionLimitError in `Bash.exec()`; `node:internal/` paths stripped
+11. ~~**FD exhaustion enforcement**~~ — **IMPLEMENTED**: `checkFdLimit()` before every `fileDescriptors.set()` across interpreter, redirections, subshell-group
+12. ~~**Glob pattern depth limit**~~ — **IMPLEMENTED**: MAX_GLOBSTAR_SEGMENTS (5) rejects patterns with excessive `**` segments
+13. ~~**Intl/TextDecoder/TextEncoder audit**~~ — **ACCEPTED RISK**: Used by 40+ internal files; no escape vectors; documented in blocked-globals.ts
+14. ~~**Frozen builtins**~~ — **IMPLEMENTED**: `__defineGetter__`/`__defineSetter__`/`__lookupGetter__`/`__lookupSetter__` blocked; JSON and Math frozen

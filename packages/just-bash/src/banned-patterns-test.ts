@@ -112,7 +112,7 @@ const _dynamicRequireSpecifier = "child_process";
 // @banned-pattern-ignore: test file for banned-patterns script
 require(_dynamicRequireSpecifier);
 
-// Pattern 21: createRequire() usage outside approved worker module
+// Pattern 21: createRequire() usage
 // @banned-pattern-ignore: test file for banned-patterns script
 const _requireForPatternTest = createRequire(import.meta.url);
 

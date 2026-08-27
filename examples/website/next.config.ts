@@ -29,9 +29,6 @@ const nextConfig: NextConfig = {
     "@mongodb-js/zstd",
     "node-liblzma",
     "seek-bzip",
-    "sql.js",
-    "quickjs-emscripten",
-    "guarded-fetch",
   ],
   outputFileTracingIncludes: {
     "/api/agent": ["./app/api/agent/_agent-data/**/*"],

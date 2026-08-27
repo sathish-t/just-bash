@@ -20,7 +20,6 @@ pnpm test:run              # Run ALL tests (including spec tests)
 pnpm test:unit             # Run unit tests only (fast, no comparison/spec)
 pnpm test:comparison       # Run comparison tests only (uses fixtures)
 pnpm test:comparison:record # Re-record comparison test fixtures
-pnpm test:wasm             # Run WASM tests (python3, sqlite3, js-exec)
 
 # Excluding spec tests (spec tests have known failures)
 pnpm test:run --exclude src/spec-tests
@@ -144,20 +143,6 @@ Input Script → Parser (src/parser/) → AST (src/ast/) → Interpreter (src/in
 - Supports: s, d, p, q, n, a, i, c, y, =, addresses, ranges, extended regex (-E/-r)
 - Has execution limits to prevent runaway compute
 
-**Python** (`src/commands/python3/`): CPython compiled to WebAssembly via Emscripten
-
-- `python3.ts` - Command entry point, arg parsing, worker lifecycle, timeout with worker termination
-- `worker.ts` - Worker thread: loads CPython WASM, HOSTFS/HTTPFS bridges, defense-in-depth
-- `sync-fs-backend.ts` / `protocol.ts` - SharedArrayBuffer protocol for sync FS calls from WASM
-- `fs-bridge-handler.ts` - Main thread: processes FS requests from worker
-- Security: isolation by construction (no JS bridge, no ctypes, no dlopen, no NODEFS)
-- Defense-in-depth: `Module._load` blocking at file scope (before WASM loads), `WorkerDefenseInDepth` after
-- WASM binary at `vendor/cpython-emscripten/` — `python.cjs` has `__emscripten_system` patched to return -1
-- `-m MODULE` names are validated with `/^[a-zA-Z_][a-zA-Z0-9_.]*$/` to prevent code injection
-- Worker is terminated on timeout via `workerRef` pattern
-- WASM memory capped at 512MB (`-sMAXIMUM_MEMORY=536870912`)
-- Tests: `pnpm test:wasm` (excluded from `pnpm test:unit` by default due to WASM load time)
-
 ### Adding Commands
 
 Commands go in `src/commands/<name>/` with:
@@ -257,6 +242,6 @@ Object.setPrototypeOf(MAP, null);
 - Always verify with `pnpm typecheck && pnpm lint:fix && pnpm knip && pnpm test:run` before finishing
 - Assert full stdout/stderr in tests, not partial matches
 - Implementation must match real bash behavior, not convenience
-- Dependencies using WASM are not allowed (exception: sql.js for SQLite, approved for security sandboxing)
+- Dependencies using WASM are not allowed
 - We explicitly don't support 64-bit integers
 - All parsing/execution must have reasonable limits to prevent runaway compute

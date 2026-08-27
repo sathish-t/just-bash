@@ -2,7 +2,6 @@ import type { ByteString } from "./encoding.js";
 import type { CommandExecutionBudget } from "./execution-scope.js";
 import type { IFileSystem } from "./fs/interface.js";
 import type { ExecutionLimits } from "./limits.js";
-import type { SecureFetch } from "./network/index.js";
 
 /**
  * Lightweight interface for feature coverage tracking during fuzzing.
@@ -124,9 +123,8 @@ export interface CommandExecOptions {
  * - `exec` - For commands like `xargs`, `bash -c` that need to run subcommands
  * - `getRegisteredCommands` - For the `help` command to list available commands
  *
- * **Conditionally available based on configuration:**
- * - `fetch` - Only when `network` option is configured in BashEnv
- * - `sleep` - Only when a custom sleep function is provided (e.g., for testing)
+ * `sleep` is conditionally available when a custom sleep function is provided
+ * (for example, for testing).
  */
 /**
  * Performance trace event for profiling command execution
@@ -212,11 +210,6 @@ export interface RuntimeCommandContext {
     options: Omit<CommandExecOptions, "stdin" | "stdinKind">,
   ) => Promise<ExecResult>;
   /**
-   * Secure fetch function for network requests (e.g., for `curl`).
-   * Only available when `network` option is configured in BashEnv.
-   */
-  fetch?: SecureFetch;
-  /**
    * Returns names of all registered commands.
    * Available when running commands via BashEnv interpreter.
    * Used by the `help` command.
@@ -261,18 +254,6 @@ export interface RuntimeCommandContext {
    * before and after awaited operations.
    */
   requireDefenseContext?: boolean;
-  /**
-   * Bootstrap JavaScript code for js-exec.
-   * Threaded through the context chain instead of shell env to prevent
-   * user access/injection via environment variables.
-   */
-  jsBootstrapCode?: string;
-  /**
-   * Tool invoker hook. When present, js-exec sets up a `tools` proxy that
-   * routes calls through this callback. Receives `(path, argsJson)` and
-   * returns a JSON result string.
-   */
-  invokeTool?: (path: string, argsJson: string) => Promise<string>;
 }
 
 /** Legacy standalone context shape used by direct command invocations. */

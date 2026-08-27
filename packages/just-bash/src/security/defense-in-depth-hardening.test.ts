@@ -370,11 +370,6 @@ describeDefense("Defense-in-Depth Hardening", () => {
       });
     });
 
-    // Note: process.send, process.connected, and process.channel are only
-    // blocked in WorkerDefenseInDepth (not in the main-thread DefenseInDepthBox).
-    // Blocking IPC properties in the main thread interferes with test runners
-    // and Node.js internals that use IPC within the same async context.
-
     describe("process.cpuUsage blocking", () => {
       it("should block process.cpuUsage inside sandbox", async () => {
         const box = DefenseInDepthBox.getInstance(true);

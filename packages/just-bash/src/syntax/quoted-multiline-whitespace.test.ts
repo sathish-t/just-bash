@@ -4,8 +4,7 @@ import { Bash } from "../Bash.js";
 // Regression tests: script normalization (which strips leading indentation so
 // indented template literals parse) must NOT trim lines that begin inside a
 // multi-line single- or double-quoted string. There the leading whitespace is
-// literal (POSIX) and must be preserved verbatim, e.g. the body of
-// `python3 -c '...'`.
+// literal (POSIX) and must be preserved verbatim.
 describe("multi-line quoted string whitespace", () => {
   it("preserves leading indentation inside a single-quoted string", async () => {
     const env = new Bash();

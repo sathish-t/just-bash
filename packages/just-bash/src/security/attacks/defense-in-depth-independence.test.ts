@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import * as nodeModule from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -18,7 +19,6 @@ function loadFixture(name: string): string {
 
 async function runAttackWithAndWithoutDefense(options: {
   fixture: string;
-  python?: boolean;
 }): Promise<{
   baseline: Awaited<ReturnType<Bash["exec"]>>;
   withDefense: Awaited<ReturnType<Bash["exec"]>>;
@@ -27,7 +27,6 @@ async function runAttackWithAndWithoutDefense(options: {
   const script = loadFixture(options.fixture);
 
   const baselineEnv = new Bash({
-    python: options.python,
     defenseInDepth: false,
   });
   const baseline = await baselineEnv.exec(script);
@@ -35,7 +34,6 @@ async function runAttackWithAndWithoutDefense(options: {
   DefenseInDepthBox.resetInstance();
   const violations: SecurityViolation[] = [];
   const defenseEnv = new Bash({
-    python: options.python,
     defenseInDepth: {
       enabled: true,
       onViolation: (violation) => violations.push(violation),
@@ -62,46 +60,14 @@ describe.runIf(typeof nodeModule.registerHooks === "function")(
       assertExecResultSafe(withDefense);
     });
 
-    it("jq/yq exploit probes are contained with and without defense", async () => {
+    it("jq exploit probes are contained with and without defense", async () => {
       const { baseline, withDefense } = await runAttackWithAndWithoutDefense({
         fixture: "query-engine-constructor-chain.sh",
       });
 
-      // With pre-captured timers and process.env allowed keys, defense no
-      // longer diverges for yq — the query engine's internal env var reads
-      // (LOG_TOKENS, LOG_STREAM) go through the allow-list.
-      expect(withDefense).toEqual(baseline);
-      assertExecResultSafe(baseline);
-      assertExecResultSafe(withDefense);
-    });
-
-    it("sqlite exploit probes are contained with and without defense", async () => {
-      const { baseline, withDefense } = await runAttackWithAndWithoutDefense({
-        fixture: "sqlite-load-extension.sh",
-      });
-
-      // With pre-captured timers (_setTimeout/_clearTimeout), the sqlite
-      // worker timeout path no longer triggers defense violations.
-      expect(baseline.stdout).toContain("SQLITE_LOAD_EXTENSION_BLOCKED");
-      expect(withDefense).toEqual(baseline);
-      assertExecResultSafe(baseline);
-      assertExecResultSafe(withDefense);
-    });
-
-    it("python exploit probes are contained with and without defense", async () => {
-      const { baseline, withDefense } = await runAttackWithAndWithoutDefense({
-        fixture: "python-worker-escape.sh",
-        python: true,
-      });
-
-      // With pre-captured _SharedArrayBuffer and _Atomics in the protocol
-      // module, the python worker no longer triggers defense violations.
-      expect(baseline.stdout).toContain("PYTHON_MARKER_ABSENT");
       expect(withDefense).toEqual(baseline);
       assertExecResultSafe(baseline);
       assertExecResultSafe(withDefense);
     });
   },
 );
-
-import * as nodeModule from "node:module";

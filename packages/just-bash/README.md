@@ -1,8 +1,6 @@
 # just-bash
 
-A virtual bash environment with an in-memory filesystem, written in TypeScript and designed for AI agents.
-
-Broad support for standard unix commands and bash syntax with optional curl, Python, JS/TS, and sqlite support.
+A virtual bash environment with an in-memory filesystem, written in TypeScript and designed for AI agents, with broad support for standard Unix commands and bash syntax.
 
 **Note**: This is beta software. Use at your own risk and please provide feedback. See [security model](#security-model).
 
@@ -90,11 +88,7 @@ duplicating internal defaults.
 
 ### Data Processing
 
-`jq` (JSON), `sqlite3` (SQLite), `xan` (CSV), `yq` (YAML/XML/TOML/CSV)
-
-### Optional Runtimes
-
-`js-exec` (JavaScript/TypeScript via QuickJS; requires `javascript: true`), `python3`/`python` (Python via CPython; requires `python: true`)
+`jq` (JSON)
 
 ### Compression & Archives
 
@@ -107,10 +101,6 @@ duplicating internal defaults.
 ### Shell Utilities
 
 `alias`, `bash`, `chmod`, `clear`, `date`, `expr`, `false`, `help`, `history`, `seq`, `sh`, `sleep`, `time`, `timeout`, `true`, `unalias`, `which`, `whoami`
-
-### Network
-
-`curl`, `html-to-markdown` (require [network configuration](#network-access))
 
 All commands support `--help` for usage information.
 
@@ -139,9 +129,6 @@ const env = new Bash({
   env: { MY_VAR: "value" }, // Initial environment
   cwd: "/app", // Starting directory (default: /home/user)
   executionLimits: { maxCallDepth: 50 }, // See "Execution Protection"
-  python: true, // Enable python3/python commands
-  javascript: true, // Enable js-exec command
-  // Or with bootstrap: javascript: { bootstrap: "globalThis.X = 1;" }
 });
 
 // Per-exec overrides
@@ -327,193 +314,6 @@ const fs = new MountableFs({
 });
 ```
 
-## Optional Capabilities
-
-### Network Access
-
-Network access is disabled by default. Enable it with the `network` option:
-
-```typescript
-// Allow specific URLs with GET/HEAD only (safest)
-const env = new Bash({
-  network: {
-    allowedUrlPrefixes: [
-      "https://api.github.com/repos/myorg/",
-      "https://api.example.com",
-    ],
-  },
-});
-
-// Allow specific URLs with additional methods
-const env = new Bash({
-  network: {
-    allowedUrlPrefixes: ["https://api.example.com"],
-    allowedMethods: ["GET", "HEAD", "POST"], // Default: ["GET", "HEAD"]
-  },
-});
-
-// Inject credentials via header transforms (secrets never enter the sandbox)
-const env = new Bash({
-  network: {
-    allowedUrlPrefixes: [
-      "https://public-api.com", // plain string — no transforms
-      {
-        url: "https://ai-gateway.vercel.sh",
-        transform: [{ headers: { Authorization: "Bearer secret" } }],
-      },
-    ],
-  },
-});
-
-// Allow all URLs and methods (use with caution)
-const env = new Bash({
-  network: { dangerouslyAllowFullInternetAccess: true },
-});
-```
-
-**Note:** The `curl` command only exists when network is configured. Without network configuration, `curl` returns "command not found".
-
-#### Allow-List Security
-
-The allow-list enforces:
-
-- **Origin matching**: URLs must match the exact origin (scheme + host + port)
-- **Path prefix**: Only paths starting with the specified prefix are allowed
-- **HTTP method restrictions**: Only GET and HEAD by default (configure `allowedMethods` for more)
-- **Redirect protection**: Redirects to non-allowed URLs are blocked
-- **Header transforms**: Firewall headers are injected at the fetch boundary and override any user-supplied headers with the same name, preventing credential substitution from inside the sandbox. Headers are re-evaluated on each redirect so credentials are never leaked to non-transform hosts
-
-#### Using curl
-
-```bash
-# Fetch and process data
-curl -s https://api.example.com/data | grep pattern
-
-# Download and convert HTML to Markdown
-curl -s https://example.com | html-to-markdown
-
-# POST JSON data
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"key":"value"}' https://api.example.com/endpoint
-```
-
-### JavaScript Support
-
-JavaScript and TypeScript execution via QuickJS is opt-in due to additional security surface. Enable with `javascript: true`:
-
-```typescript
-const env = new Bash({
-  javascript: true,
-});
-
-// Execute JavaScript code
-await env.exec('js-exec -c "console.log(1 + 2)"');
-
-// Run script files (.js, .mjs, .ts, .mts)
-await env.exec('js-exec script.js');
-
-// ES module mode with imports
-await env.exec('js-exec -m -c "import fs from \'fs\'; console.log(fs.readFileSync(\'/data/file.txt\', \'utf8\'))"');
-```
-
-#### Bootstrap Code
-
-Run setup code before every `js-exec` invocation with the `bootstrap` option:
-
-```typescript
-const env = new Bash({
-  javascript: {
-    bootstrap: `
-      globalThis.API_BASE = "https://api.example.com";
-      globalThis.formatDate = (d) => new Date(d).toISOString();
-    `,
-  },
-});
-
-await env.exec('js-exec -c "console.log(API_BASE)"');
-// Output: https://api.example.com
-```
-
-#### Node.js Compatibility
-
-`js-exec` supports `require()` and `import` with these Node.js modules:
-
-- **fs**: `readFileSync`, `writeFileSync`, `readdirSync`, `statSync`, `existsSync`, `mkdirSync`, `rmSync`, `fs.promises.*`
-- **path**: `join`, `resolve`, `dirname`, `basename`, `extname`, `relative`, `normalize`
-- **child_process**: `execSync`, `spawnSync`
-- **process**: `argv`, `cwd()`, `exit()`, `env`, `platform`, `version`
-- **Other modules**: `os`, `url`, `assert`, `util`, `events`, `buffer`, `stream`, `string_decoder`, `querystring`
-- **Globals**: `console`, `fetch`, `Buffer`, `URL`, `URLSearchParams`
-
-`fs.readFileSync()` returns a `Buffer` by default (matching Node.js). Pass an encoding like `'utf8'` to get a string.
-
-**Note:** The `js-exec` command only exists when `javascript` is configured. It is not available in browser environments. Execution runs in a QuickJS WASM sandbox with a 64 MB memory limit and configurable timeout (30 seconds in the default `normal` profile and 10 seconds in the opt-in `hardened` profile). Enabling network access does not extend the configured deadline.
-
-#### Tool Invocation Hook
-
-`js-exec` scripts can call host-defined tools through a global `tools` proxy
-when `javascript.invokeTool` is provided:
-
-```typescript
-const bash = new Bash({
-  javascript: {
-    // path:     "math.add"  (dot-separated)
-    // argsJson: '{"a":1,"b":2}'  (or "" for no args)
-    // return:   JSON-stringified result, or "" for undefined
-    // throw:    propagates as a sandbox exception
-    invokeTool: async (path, argsJson) => {
-      const args = argsJson ? JSON.parse(argsJson) : undefined;
-      if (path === "math.add") {
-        return JSON.stringify({ sum: args.a + args.b });
-      }
-      throw new Error(`Unknown tool: ${path}`);
-    },
-  },
-});
-
-await bash.exec(`js-exec -c 'console.log((await tools.math.add({a:3,b:4})).sum)'`);
-```
-
-The hook is generic — wire any tool framework through it (raw maps, MCP,
-Anthropic tool-use, etc.). For full GraphQL / OpenAPI / MCP discovery via
-`@executor-js/sdk`, plus auto-generated bash namespace commands, use the
-companion package
-[**`@just-bash/executor`**](../just-bash-executor/README.md).
-
-### Python Support
-
-Python (CPython compiled to WASM) is opt-in due to additional security surface. Enable with `python: true`:
-
-```typescript
-const env = new Bash({
-  python: true,
-});
-
-// Execute Python code
-await env.exec('python3 -c "print(1 + 2)"');
-
-// Run Python scripts
-await env.exec('python3 script.py');
-```
-
-**Note:** The `python3` and `python` commands only exist when `python: true` is configured. Python is not available in browser environments.
-
-### SQLite Support
-
-`sqlite3` uses sql.js (SQLite compiled to WASM), sandboxed from the real filesystem:
-
-```typescript
-const env = new Bash();
-
-// Query in-memory database
-await env.exec('sqlite3 :memory: "SELECT 1 + 1"');
-
-// Query file-based database
-await env.exec('sqlite3 data.db "SELECT * FROM users"');
-```
-
-**Note:** SQLite is not available in browser environments. Queries run in a worker thread with a configurable timeout (30 seconds in the default `normal` profile and 5 seconds in the opt-in `hardened` profile) to prevent runaway queries from blocking execution.
-
 ## AST Transform Plugins
 
 Parse bash scripts into an AST, transform them, and serialize back to bash. Good for instrumenting scripts (e.g., capturing per-command stdout/stderr) or extracting metadata before execution.
@@ -638,12 +438,6 @@ Options:
 pnpm shell
 ```
 
-The interactive shell has full internet access by default. Disable with `--no-network`:
-
-```bash
-pnpm shell --no-network
-```
-
 ## Execution Protection
 
 Bash protects against infinite loops and deep recursion with configurable limits:
@@ -660,7 +454,6 @@ const env = new Bash({
     maxFileSystemBytes: 256 * 1024 * 1024, // Retained default-FS data
     maxOutputSize: 32 * 1024 * 1024, // Aggregate stdout + stderr bytes
     maxArchiveBytes: 256 * 1024 * 1024, // Expanded archive bytes
-    maxDatabaseBytes: 128 * 1024 * 1024, // SQLite image bytes
     maxExecutionTimeMs: 30_000, // Whole execution wall-clock deadline
     maxExtensionCleanupTimeMs: 25, // Cancellation acknowledgement grace
   },
@@ -675,12 +468,10 @@ platform timer rather than overflowing it. Invalid values are rejected when
 
 ## Security Model
 
-The Node.js package requires Node `>=20.18.1`.
+The Node.js package requires Node `>=20.19`.
 
 - The shell only has access to the provided filesystem.
 - All execution happens without VM isolation. This does introduce additional risk. The code base was designed to be robust against prototype-pollution attacks and other break outs to the host JS engine and filesystem.
-- There is no network access by default. When enabled, requests are checked against URL prefix allow-lists and HTTP-method allow-lists.
-- Python and JavaScript execution are off by default as they represent additional security surface.
 - Execution is protected against infinite loops and deep recursion with configurable limits.
 - Host-realm defense-in-depth uses the strongest scoped controls available on
   each supported Node runtime. Where `node:module.registerHooks()` is present,
@@ -699,12 +490,11 @@ The Node.js package requires Node `>=20.18.1`.
   objects and locks selected well-known Symbol descriptors; use it only in a
   disposable or process-lifetime realm. Use an isolated worker/process when
   complete protection and reversible host state are both required.
-- Node worker `resourceLimits` do not reliably cap the WebAssembly linear memory used by CPython or sql.js. Queue, deadline, file, database, bridge, and payload limits reduce exposure, but strong memory containment for these opt-in runtimes requires process/container isolation or a WASM build with a lower hard maximum.
 - Use [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) if you need a full VM with arbitrary binary execution.
 
 ## Browser Support
 
-The core shell (parsing, execution, filesystem, and all built-in commands) works in browser environments. The following features require Node.js and are unavailable in browsers: `python3`/`python`, `sqlite3`, `js-exec`, and `OverlayFs`/`ReadWriteFs` (which access the real filesystem).
+The core shell, in-memory filesystem, and most built-in commands work in browser environments. `tar`, `gzip`, `gunzip`, `zcat`, `OverlayFs`, and `ReadWriteFs` require Node.js.
 
 ## Default Layout
 

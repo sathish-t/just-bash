@@ -398,17 +398,6 @@ describe("Fuzz-discovered attack vectors", () => {
       assertExecResultSafe(result);
     });
 
-    it("yq pipe with for loop using prototype variables", async () => {
-      const env = new Bash();
-      const script = `
-        bqiLR1J=\${bkIMDK9tpK} yq | MMdy[dst8]=- && for LHFqdA01Q in {3..16} d8QcI/oe 'rMb/vv4b'; do
-          ! constructor=\${__proto__:-OP1lmPiFYbDi}
-        done | [[ -e "tu/EL3sa\${prototype[8]}" ]]
-      `;
-      const result = await env.exec(`${script} 2>&1 || true`);
-      assertExecResultSafe(result);
-    });
-
     it("background function named constructor", async () => {
       const env = new Bash();
       const script = `

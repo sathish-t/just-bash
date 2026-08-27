@@ -34,13 +34,13 @@ export interface ExecutionLimits {
   /** Maximum iterations for jq loops (normal default: 100000) */
   maxJqIterations?: number;
 
-  /** Maximum jq/yq parser tokens (default: 100000) */
+  /** Maximum jq parser tokens (default: 100000) */
   maxQueryTokens?: number;
 
-  /** Maximum jq/yq object/query traversal depth (default: 1000) */
+  /** Maximum jq object/query traversal depth (default: 1000) */
   maxQueryDepth?: number;
 
-  /** Maximum jq/yq result elements (default: 1000000) */
+  /** Maximum jq result elements (default: 1000000) */
   maxQueryElements?: number;
 
   /** Maximum AWK parser tokens (default: 100000) */
@@ -51,12 +51,6 @@ export interface ExecutionLimits {
 
   /** Maximum AWK parser operations (default: 1000000) */
   maxAwkParserOperations?: number;
-
-  /** Maximum parsed CSV rows (default: 1000000) */
-  maxCsvRows?: number;
-
-  /** Maximum parsed CSV cells (default: 10000000) */
-  maxCsvCells?: number;
 
   /** Aggregate execution work units shared across nested execution (default: 1000000) */
   maxWorkUnits?: number;
@@ -79,12 +73,6 @@ export interface ExecutionLimits {
   /** Maximum bytes retained by Bash's default in-memory filesystem (default: 1 GiB) */
   maxFileSystemBytes?: number;
 
-  /** Maximum SQLite database image bytes (default: 1 GiB) */
-  maxDatabaseBytes?: number;
-
-  /** Maximum SQLite result bytes before output formatting (default: 256 MiB) */
-  maxDatabaseResultBytes?: number;
-
   /** Maximum aggregate expanded archive bytes (default: 1 GiB) */
   maxArchiveBytes?: number;
 
@@ -97,9 +85,6 @@ export interface ExecutionLimits {
   /** Maximum archive entries (default: 1000000) */
   maxArchiveEntries?: number;
 
-  /** Maximum worker request or response payload bytes (default: 64 MiB) */
-  maxWorkerMessageBytes?: number;
-
   /** Maximum top-level execution wall time in milliseconds (default: 1 hour) */
   maxExecutionTimeMs?: number;
 
@@ -108,15 +93,6 @@ export interface ExecutionLimits {
    * execution context is revoked (normal default: 100ms).
    */
   maxExtensionCleanupTimeMs?: number;
-
-  /** Maximum sqlite3 query execution time in milliseconds (normal default: 30000) */
-  maxSqliteTimeoutMs?: number;
-
-  /** Maximum Python execution time in milliseconds (normal default: 30000) */
-  maxPythonTimeoutMs?: number;
-
-  /** Maximum JavaScript execution time in milliseconds (normal default: 30000) */
-  maxJsTimeoutMs?: number;
 
   /** Maximum glob filesystem operations (normal default: 1000000) */
   maxGlobOperations?: number;
@@ -174,8 +150,6 @@ const DEFAULT_LIMITS: Required<ExecutionLimits> = {
   maxAwkParserTokens: 100000,
   maxAwkParserDepth: 256,
   maxAwkParserOperations: 1000000,
-  maxCsvRows: 1000000,
-  maxCsvCells: 10000000,
   // Aggregate across an entire exec(), including large CSV/query transforms.
   // Keep normal mode comfortably above the per-resource row/element limits;
   // hardened mode below provides the tighter untrusted-workload ceiling.
@@ -186,20 +160,14 @@ const DEFAULT_LIMITS: Required<ExecutionLimits> = {
   maxLiveBytes: 512 * 1024 * 1024,
   maxInputBytes: 512 * 1024 * 1024,
   maxFileSystemBytes: 1024 * 1024 * 1024,
-  maxDatabaseBytes: 1024 * 1024 * 1024,
-  maxDatabaseResultBytes: 256 * 1024 * 1024,
   maxArchiveBytes: 1024 * 1024 * 1024,
   maxArchiveCompressedBytes: 512 * 1024 * 1024,
   maxArchiveEntryBytes: 512 * 1024 * 1024,
   maxArchiveEntries: 1000000,
-  maxWorkerMessageBytes: 64 * 1024 * 1024,
   // Prior releases had no top-level deadline. Keep normal compatibility-safe
   // for long real workloads while retaining a finite defense-in-depth bound.
   maxExecutionTimeMs: 60 * 60 * 1000,
   maxExtensionCleanupTimeMs: 100,
-  maxSqliteTimeoutMs: 30000,
-  maxPythonTimeoutMs: 30000,
-  maxJsTimeoutMs: 30000,
   maxGlobOperations: 1000000,
   maxStringLength: 64 * 1024 * 1024,
   maxArrayElements: 1000000,
@@ -219,9 +187,6 @@ const HARDENED_LIMITS: Required<ExecutionLimits> = {
   maxAwkIterations: 10_000,
   maxSedIterations: 10_000,
   maxJqIterations: 10_000,
-  maxSqliteTimeoutMs: 5_000,
-  maxPythonTimeoutMs: 10_000,
-  maxJsTimeoutMs: 10_000,
   maxExtensionCleanupTimeMs: 25,
   maxGlobOperations: 100_000,
   maxStringLength: 10 * 1024 * 1024,
@@ -236,8 +201,6 @@ const HARDENED_LIMITS: Required<ExecutionLimits> = {
   maxAwkParserTokens: 25_000,
   maxAwkParserDepth: 128,
   maxAwkParserOperations: 100_000,
-  maxCsvRows: 100_000,
-  maxCsvCells: 1_000_000,
   maxWorkUnits: 100_000,
   maxTraversalEntries: 100_000,
   maxTraversalDepth: 256,
@@ -245,13 +208,10 @@ const HARDENED_LIMITS: Required<ExecutionLimits> = {
   maxLiveBytes: 64 * 1024 * 1024,
   maxInputBytes: 32 * 1024 * 1024,
   maxFileSystemBytes: 128 * 1024 * 1024,
-  maxDatabaseBytes: 64 * 1024 * 1024,
-  maxDatabaseResultBytes: 16 * 1024 * 1024,
   maxArchiveBytes: 128 * 1024 * 1024,
   maxArchiveCompressedBytes: 64 * 1024 * 1024,
   maxArchiveEntryBytes: 64 * 1024 * 1024,
   maxArchiveEntries: 100_000,
-  maxWorkerMessageBytes: 16 * 1024 * 1024,
   maxExecutionTimeMs: 30_000,
 };
 
@@ -290,8 +250,6 @@ export function resolveLimits(
       userLimits.maxAwkParserDepth ?? defaults.maxAwkParserDepth,
     maxAwkParserOperations:
       userLimits.maxAwkParserOperations ?? defaults.maxAwkParserOperations,
-    maxCsvRows: userLimits.maxCsvRows ?? defaults.maxCsvRows,
-    maxCsvCells: userLimits.maxCsvCells ?? defaults.maxCsvCells,
     maxWorkUnits: userLimits.maxWorkUnits ?? defaults.maxWorkUnits,
     maxTraversalEntries:
       userLimits.maxTraversalEntries ?? defaults.maxTraversalEntries,
@@ -302,9 +260,6 @@ export function resolveLimits(
     maxInputBytes: userLimits.maxInputBytes ?? defaults.maxInputBytes,
     maxFileSystemBytes:
       userLimits.maxFileSystemBytes ?? defaults.maxFileSystemBytes,
-    maxDatabaseBytes: userLimits.maxDatabaseBytes ?? defaults.maxDatabaseBytes,
-    maxDatabaseResultBytes:
-      userLimits.maxDatabaseResultBytes ?? defaults.maxDatabaseResultBytes,
     maxArchiveBytes: userLimits.maxArchiveBytes ?? defaults.maxArchiveBytes,
     maxArchiveCompressedBytes:
       userLimits.maxArchiveCompressedBytes ??
@@ -313,18 +268,11 @@ export function resolveLimits(
       userLimits.maxArchiveEntryBytes ?? defaults.maxArchiveEntryBytes,
     maxArchiveEntries:
       userLimits.maxArchiveEntries ?? defaults.maxArchiveEntries,
-    maxWorkerMessageBytes:
-      userLimits.maxWorkerMessageBytes ?? defaults.maxWorkerMessageBytes,
     maxExecutionTimeMs:
       userLimits.maxExecutionTimeMs ?? defaults.maxExecutionTimeMs,
     maxExtensionCleanupTimeMs:
       userLimits.maxExtensionCleanupTimeMs ??
       defaults.maxExtensionCleanupTimeMs,
-    maxSqliteTimeoutMs:
-      userLimits.maxSqliteTimeoutMs ?? defaults.maxSqliteTimeoutMs,
-    maxPythonTimeoutMs:
-      userLimits.maxPythonTimeoutMs ?? defaults.maxPythonTimeoutMs,
-    maxJsTimeoutMs: userLimits.maxJsTimeoutMs ?? defaults.maxJsTimeoutMs,
     maxGlobOperations:
       userLimits.maxGlobOperations ?? defaults.maxGlobOperations,
     maxStringLength: userLimits.maxStringLength ?? defaults.maxStringLength,

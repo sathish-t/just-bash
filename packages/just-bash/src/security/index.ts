@@ -49,8 +49,3 @@ export type {
   SecurityViolation,
   SecurityViolationType,
 } from "./types.js";
-// Worker-compatible version (no AsyncLocalStorage, always blocks)
-export {
-  WorkerDefenseInDepth,
-  type WorkerDefenseStats,
-} from "./worker-defense-in-depth.js";

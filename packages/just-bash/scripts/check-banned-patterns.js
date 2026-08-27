@@ -296,13 +296,10 @@ const BANNED_PATTERNS = [
     ],
   },
   {
-    name: "createRequire() usage outside approved worker module",
+    name: "createRequire() usage",
     // Skip comment lines
     pattern: /^(?!\s*(?:\/\/|\/?\*)).*\bcreateRequire\s*\(/,
-    filePattern: /src\/(?!commands\/python3\/worker\.ts$).*\.ts$/,
-    message:
-      "createRequire can expose unrestricted module-loading behavior and should be\n" +
-      "confined to audited worker bootstrap code.",
+    message: "createRequire can expose unrestricted module-loading behavior.",
     solutions: [
       "Use static imports for known dependencies",
       "If truly needed, confine to an audited module and document the threat model",
@@ -310,10 +307,9 @@ const BANNED_PATTERNS = [
     ],
   },
   {
-    name: "Module._load/_resolveFilename access outside approved worker module",
+    name: "Module._load/_resolveFilename access",
     // Skip comment lines
     pattern: /^(?!\s*(?:\/\/|\/?\*)).*\._(?:load|resolveFilename)\s*\(/,
-    filePattern: /src\/(?!commands\/python3\/worker\.ts$).*\.ts$/,
     message:
       "Direct Module._load/_resolveFilename access bypasses normal module boundaries\n" +
       "and can reintroduce dangerous host-module execution paths.",
@@ -463,7 +459,7 @@ const BANNED_PATTERNS = [
     // Skip comment lines
     pattern: /^(?!\s*(?:\/\/|\/?\*)).*\bawait\b/,
     filePattern:
-      /src\/commands\/(?:awk\/(?:awk2|interpreter\/[^/]+)|sed\/sed|jq\/jq|yq\/yq|query-engine\/[^/]+)\.ts$/,
+      /src\/commands\/(?:awk\/(?:awk2|interpreter\/[^/]+)|sed\/sed|jq\/jq|query-engine\/[^/]+)\.ts$/,
     message:
       "Raw await in high-risk interpreter paths can hide defense-context drift.\n" +
       "Use defense-aware await wrappers to fail closed on context loss.",
@@ -475,38 +471,6 @@ const BANNED_PATTERNS = [
     autoSafe: [/awaitWithDefenseContext\s*\(/, /withDefenseContext\s*\(/],
   },
   {
-    name: "Inline worker.on callback in WASM command paths",
-    // Skip comment lines
-    pattern:
-      /^(?!\s*(?:\/\/|\/?\*)).*\bworker\.on\s*\(\s*["'][^"']+["']\s*,\s*(?:\([^)]*\)\s*=>|function\s*\()/,
-    filePattern: /src\/commands\/(?:python3\/python3|sqlite3\/sqlite3)\.ts$/,
-    message:
-      "Inline worker event callbacks in WASM command paths can lose defense context.\n" +
-      "Bind callbacks via bindDefenseContextCallback(...) and pass a named handler.",
-    solutions: [
-      "Create a named callback with bindDefenseContextCallback(...)",
-      "Register as worker.on(event, (arg) => wrapped(arg)) to catch and sanitize failures",
-      "Use @banned-pattern-ignore only with a concrete safety reason",
-    ],
-    autoSafe: [/bindDefenseContextCallback\s*\(/],
-  },
-  {
-    name: "Inline _setTimeout callback in WASM command paths",
-    // Skip comment lines
-    pattern:
-      /^(?!\s*(?:\/\/|\/?\*)).*\b_setTimeout\s*\(\s*(?:\([^)]*\)\s*=>|function\s*\()/,
-    filePattern: /src\/commands\/(?:python3\/python3|sqlite3\/sqlite3)\.ts$/,
-    message:
-      "Inline timeout callbacks in WASM command paths can run without defense context.\n" +
-      "Use bindDefenseContextCallback(...) and invoke it from a guarded wrapper.",
-    solutions: [
-      "Create onTimeout with bindDefenseContextCallback(...)",
-      "Call onTimeout() inside try/catch and sanitize failures",
-      "Use @banned-pattern-ignore only with a concrete safety reason",
-    ],
-    autoSafe: [/bindDefenseContextCallback\s*\(/],
-  },
-  {
     name: "Raw Record<string, unknown> cast in query engine",
     pattern: /as\s+Record\s*<\s*string\s*,\s*unknown\s*>/,
     filePattern: /src\/commands\/query-engine\/(?!safe-object).*\.ts$/,
@@ -515,22 +479,6 @@ const BANNED_PATTERNS = [
       "Use asQueryRecord(value) for auditable, type-safe property access.",
     solutions: ["Use asQueryRecord(value) from safe-object.ts"],
     autoSafe: [/asQueryRecord/],
-  },
-  {
-    name: "Inline WASM hook callback in worker modules",
-    // Skip comment lines
-    pattern:
-      /^(?!\s*(?:\/\/|\/?\*)).*\b(?:print|printErr|onViolation)\s*:\s*(?:\([^)]*\)\s*=>|function\s*\()/,
-    filePattern: /src\/commands\/(?:python3|sqlite3)\/worker\.ts$/,
-    message:
-      "Inline WASM hook callbacks in worker modules can hide unsafe callback handling.\n" +
-      "Wrap these callbacks with wrapWasmCallback(...) for consistent sanitization.",
-    solutions: [
-      "Create a named callback via wrapWasmCallback(...)",
-      "Pass the named callback into the module config instead of inline lambdas",
-      "Use @banned-pattern-ignore only with a concrete safety reason",
-    ],
-    autoSafe: [/wrapWasmCallback\s*\(/],
   },
   {
     name: "Non-portable AbortSignal composition",
@@ -586,38 +534,6 @@ const BANNED_PATTERNS = [
     ],
   },
   {
-    name: "Raw fetch in secured network path",
-    pattern: /(?<![.\w])fetch\s*\(/,
-    filePattern: /src\/network\/fetch\.ts$/,
-    message:
-      "A secured network request must use the guarded transport whenever\n" +
-      "private-range enforcement is active.",
-    solutions: [
-      "Call guardedFetch so DNS validation and connect-time IP pinning apply",
-      "Annotate only the audited branch where private-range enforcement is disabled",
-    ],
-  },
-  {
-    name: "Ambient fetch reference in secured network path",
-    // Catches `globalThis.fetch` and friends, whether called directly or
-    // aliased/handed to guarded-fetch as its transport. The `.`-prefixed form
-    // is invisible to the raw-fetch rule above.
-    // Skip comment lines.
-    pattern:
-      /^(?!\s*(?:\/\/|\/?\*)).*(?<![.\w])(?:globalThis|global|window|self)\s*\.\s*fetch\b/,
-    filePattern: /src\/network\/fetch\.ts$/,
-    message:
-      "The ambient fetch is mutable host state: a wrapper installed by a\n" +
-      "framework, APM agent, or mocking library can rebuild the request init\n" +
-      "and drop guarded-fetch's non-standard `dispatcher`, silently disabling\n" +
-      "connect-time IP pinning.",
-    solutions: [
-      "Let guarded-fetch use its own undici transport on the pinned path",
-      "Inject a transport via NetworkConfig._fetch for tests",
-      "Annotate only the audited branch where private-range enforcement is disabled",
-    ],
-  },
-  {
     name: "Whole-buffer decompression outside codec boundary",
     pattern:
       /\b(?:gunzipSync|inflateSync|inflateRawSync|unzipSync|brotliDecompressSync|zstdDecompressSync)\s*\(/,
@@ -635,13 +551,13 @@ const BANNED_PATTERNS = [
     pattern:
       /(?:from\s*["'](?:node:fs(?:\/promises)?|fs\/promises)["']|require\s*\(\s*["'](?:node:fs(?:\/promises)?|fs\/promises)["']\s*\))/,
     filePattern:
-      /src\/(?!fs\/)(?!cli\/)(?!comparison-tests\/)(?!commands\/js-exec\/)(?!commands\/(?:python3\/worker|sqlite3\/sqlite3)\.ts$)(?!security\/fuzzing\/runners\/).*\.(?:ts|js)$/,
+      /src\/(?!fs\/)(?!cli\/)(?!comparison-tests\/)(?!security\/fuzzing\/runners\/).*\.(?:ts|js)$/,
     message:
-      "Raw host filesystem access is restricted to reviewed filesystem, CLI, and\n" +
-      "worker bootstrap gates so virtual-path and error sanitization cannot be bypassed.",
+      "Raw host filesystem access is restricted to reviewed filesystem and CLI\n" +
+      "gates so virtual-path and error sanitization cannot be bypassed.",
     solutions: [
       "Use CommandContext.fs for command I/O",
-      "Move unavoidable host access behind a reviewed filesystem/worker gate",
+      "Move unavoidable host access behind a reviewed filesystem gate",
     ],
   },
   {
@@ -661,7 +577,7 @@ const BANNED_PATTERNS = [
     pattern:
       /(?:\.(?:repeat|padStart|padEnd)\s*\(\s*[A-Za-z_$]|(?<![\w.])(?:new\s+)?Array\s*\(\s*[A-Za-z_$])/,
     filePattern:
-      /src\/commands\/(?!awk\/)(?!printf\/)(?!sqlite3\/formatters\.ts$)(?!nl\/nl\.ts$)(?!expand\/)(?!yq\/formats\.ts$)(?!jq\/jq\.ts$)(?!query-engine\/)(?!split\/split\.ts$)(?!seq\/seq\.ts$)(?!xan\/)(?!js-exec\/)(?!tar\/bzip2-compress\.ts$)(?!wc\/wc\.ts$).*\.ts$/,
+      /src\/commands\/(?!awk\/)(?!printf\/)(?!nl\/nl\.ts$)(?!expand\/)(?!jq\/jq\.ts$)(?!query-engine\/)(?!split\/split\.ts$)(?!seq\/seq\.ts$)(?!tar\/bzip2-compress\.ts$)(?!wc\/wc\.ts$).*\.ts$/,
     message:
       "Dynamic repeat, padding, and array sizes must be checked before allocation.\n" +
       "Post-allocation length checks are too late.",
@@ -674,8 +590,7 @@ const BANNED_PATTERNS = [
     name: "Unchecked array construction followed by join",
     pattern:
       /(?:new\s+)?Array\s*\([^)]*\)\s*\.\s*(?:fill\s*\([^)]*\)\s*\.)?join\s*\(/,
-    filePattern:
-      /src\/(?!commands\/js-exec\/)(?:commands|interpreter)\/.*\.ts$/,
+    filePattern: /src\/(?:commands|interpreter)\/.*\.ts$/,
     message:
       "Array construction followed by join creates multiple attacker-scaled\n" +
       "intermediates. Use a checked bounded builder.",
@@ -688,8 +603,7 @@ const BANNED_PATTERNS = [
     name: "Allocating UTF-8 byte-length measurement",
     pattern:
       /(?:new\s+TextEncoder\s*\(\s*\)\s*\.\s*encode\s*\([^)]*\)|Buffer\s*\.\s*from\s*\([^)]*\))\s*\.\s*(?:byteLength|length)\b/,
-    filePattern:
-      /src\/(?!commands\/js-exec\/)(?:commands|interpreter)\/.*\.ts$/,
+    filePattern: /src\/(?:commands|interpreter)\/.*\.ts$/,
     message:
       "Allocating an encoded copy just to measure bytes doubles peak memory and\n" +
       "can bypass live-byte accounting.",
@@ -709,8 +623,7 @@ const BANNED_PATTERNS = [
     name: "Fatal execution error swallowed by catch",
     pattern:
       /catch\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*\{\s*(?:return\b|continue\b|break\b)/,
-    filePattern:
-      /src\/(?!commands\/js-exec\/)(?:commands|interpreter)\/.*\.ts$/,
+    filePattern: /src\/(?:commands|interpreter)\/.*\.ts$/,
     message:
       "A catch that immediately returns/continues can swallow execution limits,\n" +
       "abort, or security violations.",
@@ -728,17 +641,6 @@ const BANNED_PATTERNS = [
       "through adapter return values.",
     solutions: ["Normalize through the typed virtual-path error boundary"],
     autoSafe: [/sanitizeErrorMessage\s*\(/, /sanitizeFsError\s*\(/],
-  },
-  {
-    name: "Worker created without shared request controller",
-    pattern: /new\s+Worker\s*\(/,
-    filePattern: /src\/commands\/.*\.ts$/,
-    message:
-      "Workers handling command requests must share cancellation, queue ownership,\n" +
-      "message-size validation, and termination cleanup.",
-    solutions: [
-      "Adopt WorkerRequestController in the containing command module",
-    ],
   },
   {
     name: "Undocumented command-local MAX constant",
@@ -803,9 +705,6 @@ const SKIP_PATTERNS = [
   /\.comparison\.test\.ts$/,
   /spec-tests/,
   /prototype-pollution\.test/, // These test the protection
-  /src\/commands\/python3\/worker\.js$/, // Generated artifact, source is worker.ts
-  /src\/commands\/js-exec\/js-exec-worker\.js$/, // Generated artifact, source is js-exec-worker.ts
-  /src\/commands\/sqlite3\/worker\.js$/, // Generated artifact, source is worker.ts
   /scripts\/check-banned-patterns\.js$/, // Self-lint script contains pattern definitions by design
 ];
 

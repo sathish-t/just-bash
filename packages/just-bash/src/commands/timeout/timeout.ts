@@ -160,8 +160,7 @@ export const timeoutCommand: RuntimeCommand = {
         // Cancellation is cooperative. Do not let the public execution scope
         // close while the child pipeline is still unwinding: late accounting,
         // output, or side effects would otherwise escape the timeout result.
-        // Built-in commands and worker bridges are required to settle when
-        // their signal aborts.
+        // Built-in commands are required to settle when their signal aborts.
         await execPromise.catch(() => undefined);
         return {
           stdout: "",

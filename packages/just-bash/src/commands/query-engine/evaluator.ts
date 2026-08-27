@@ -2,7 +2,7 @@
  * Query expression evaluator
  *
  * Evaluates a parsed query AST against any value.
- * Used by jq, yq, and other query-based commands.
+ * Used by jq.
  */
 
 import { BoundedStringBuilder } from "../../bounded-builder.js";

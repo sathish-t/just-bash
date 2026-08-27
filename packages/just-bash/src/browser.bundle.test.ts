@@ -3,7 +3,7 @@
  *
  * These tests verify that the browser bundle:
  * 1. Does not contain Node.js-only imports
- * 2. Does not include browser-excluded commands like yq/xan/sqlite3
+ * 2. Does not include the browser-excluded tar command
  * 3. Shows helpful error messages for browser-excluded commands
  */
 
@@ -12,37 +12,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Bash } from "./Bash.js";
 import { BROWSER_EXCLUDED_COMMANDS } from "./commands/browser-excluded.js";
-import { getCommandNames, getPythonCommandNames } from "./commands/registry.js";
+import { getCommandNames } from "./commands/registry.js";
 
 const browserBundlePath = resolve(__dirname, "../dist/bundle/browser.js");
 
 describe("browser bundle safety", () => {
   describe("bundle contents", () => {
-    it("should not contain sql.js imports", () => {
-      const bundleContent = readFileSync(browserBundlePath, "utf-8");
-      expect(bundleContent).not.toContain("sql.js");
-    });
-
-    it("should not contain sqlite3 command registration", () => {
-      const bundleContent = readFileSync(browserBundlePath, "utf-8");
-      // The sqlite3 command should not be in the bundle at all
-      // since it's excluded via __BROWSER__ flag
-      expect(bundleContent).not.toContain('name:"sqlite3"');
-      expect(bundleContent).not.toContain("sqlite3Command");
-    });
-
-    it("should not contain yq command registration", () => {
-      const bundleContent = readFileSync(browserBundlePath, "utf-8");
-      expect(bundleContent).not.toContain('name:"yq"');
-      expect(bundleContent).not.toContain("yqCommand");
-    });
-
-    it("should not contain xan command registration", () => {
-      const bundleContent = readFileSync(browserBundlePath, "utf-8");
-      expect(bundleContent).not.toContain('name:"xan"');
-      expect(bundleContent).not.toContain("xanCommand");
-    });
-
     it("should not contain tar command registration", () => {
       const bundleContent = readFileSync(browserBundlePath, "utf-8");
       expect(bundleContent).not.toContain('name:"tar"');
@@ -78,38 +53,15 @@ describe("browser bundle safety", () => {
       expect(BROWSER_EXCLUDED_COMMANDS).toContain("tar");
     });
 
-    it("should include yq in browser-excluded commands", () => {
-      expect(BROWSER_EXCLUDED_COMMANDS).toContain("yq");
-    });
-
-    it("should include xan in browser-excluded commands", () => {
-      expect(BROWSER_EXCLUDED_COMMANDS).toContain("xan");
-    });
-
-    it("should include sqlite3 in browser-excluded commands", () => {
-      expect(BROWSER_EXCLUDED_COMMANDS).toContain("sqlite3");
-    });
-
     it("should have browser-excluded commands available in Node.js registry", () => {
       // In Node.js environment (where tests run), all commands are available
       // This verifies that browser-excluded commands exist in the full registry
-      // Note: python commands are opt-in, so they're in a separate list
-      const commandNames = [...getCommandNames(), ...getPythonCommandNames()];
+      const commandNames = getCommandNames();
 
       for (const excludedCmd of BROWSER_EXCLUDED_COMMANDS) {
         // These commands should be available in Node.js
         expect(commandNames).toContain(excludedCmd);
       }
-    });
-  });
-
-  describe("sqlite3 in Node.js", () => {
-    it("sqlite3 should be available by default in Node.js", async () => {
-      const bash = new Bash();
-      const result = await bash.exec("sqlite3 :memory: 'SELECT 1'");
-
-      expect(result.stdout).toBe("1\n");
-      expect(result.exitCode).toBe(0);
     });
   });
 
@@ -136,57 +88,6 @@ describe("browser bundle safety", () => {
       const result = await bash.exec("tar -tf archive.tar");
 
       expect(result.stderr).toContain("tar");
-      expect(result.stderr).toContain("not available in browser");
-      expect(result.stderr).toContain("Exclude");
-      expect(result.exitCode).toBe(127);
-    });
-
-    it("should show helpful error when yq is used but not available", async () => {
-      const availableCommands = getCommandNames().filter(
-        (cmd) => cmd !== "yq",
-      ) as import("./commands/registry.js").CommandName[];
-
-      const bash = new Bash({
-        commands: availableCommands,
-      });
-
-      const result = await bash.exec("yq '.' test.yaml");
-
-      expect(result.stderr).toContain("yq");
-      expect(result.stderr).toContain("not available in browser");
-      expect(result.stderr).toContain("Exclude");
-      expect(result.exitCode).toBe(127);
-    });
-
-    it("should show helpful error when xan is used but not available", async () => {
-      const availableCommands = getCommandNames().filter(
-        (cmd) => cmd !== "xan",
-      ) as import("./commands/registry.js").CommandName[];
-
-      const bash = new Bash({
-        commands: availableCommands,
-      });
-
-      const result = await bash.exec("xan count data.csv");
-
-      expect(result.stderr).toContain("xan");
-      expect(result.stderr).toContain("not available in browser");
-      expect(result.stderr).toContain("Exclude");
-      expect(result.exitCode).toBe(127);
-    });
-
-    it("should show helpful error when sqlite3 is used but not available", async () => {
-      const availableCommands = getCommandNames().filter(
-        (cmd) => cmd !== "sqlite3",
-      ) as import("./commands/registry.js").CommandName[];
-
-      const bash = new Bash({
-        commands: availableCommands,
-      });
-
-      const result = await bash.exec("sqlite3 :memory: 'SELECT 1'");
-
-      expect(result.stderr).toContain("sqlite3");
       expect(result.stderr).toContain("not available in browser");
       expect(result.stderr).toContain("Exclude");
       expect(result.exitCode).toBe(127);

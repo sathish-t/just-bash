@@ -129,26 +129,5 @@ describe.runIf(typeof nodeModule.registerHooks === "function")(
 
       expect(runSubprocess("module", body)).toBe("ok");
     });
-
-    it("rolls back worker patches when bootstrap activation fails", () => {
-      const workerSourceUrl = pathToFileURL(
-        new URL("./worker-defense-in-depth.ts", import.meta.url).pathname,
-      ).href;
-      const body = `(async () => {
-      const { Module } = await import("node:module");
-      const originalFunction = globalThis.Function;
-      const originalEval = globalThis.eval;
-      Object.defineProperty(Module, "_load", { value: Module._load, writable: false, configurable: false });
-      const { WorkerDefenseInDepth } = await import(${JSON.stringify(workerSourceUrl)});
-      let failed = false;
-      try { new WorkerDefenseInDepth({}); } catch (error) { failed = String(error).includes("Module._load"); }
-      if (!failed) throw new Error("activation did not fail closed");
-      if (globalThis.Function !== originalFunction || globalThis.eval !== originalEval) throw new Error("partial patches leaked");
-      if (Object.isFrozen(Math) || Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator)?.configurable === false) throw new Error("irreversible locks applied before validation");
-      process.stdout.write("ok");
-    })().catch((error) => { console.error(error); process.exitCode = 1; });`;
-
-      expect(runSubprocess("module", body)).toBe("ok");
-    });
   },
 );

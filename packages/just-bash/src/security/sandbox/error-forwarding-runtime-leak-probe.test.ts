@@ -24,7 +24,6 @@ describe("runtime error-forwarding leak probes", () => {
     const bash = new Bash({
       fs: new ReadWriteFs({ root: tempDir, allowSymlinks: true }),
       cwd: "/",
-      python: true,
     });
 
     const result = await bash.exec("ln /dir /dirlink");
@@ -32,46 +31,6 @@ describe("runtime error-forwarding leak probes", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
       "ln: '/dir': hard link not allowed for directory\n",
-    );
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).not.toContain(tempDir);
-    expect(result.stderr).not.toContain("/Users/");
-    expect(result.stderr).not.toContain("node:internal");
-    expect(result.stderr).not.toContain("file://");
-  });
-
-  it("python3 script-open directory error does not expose host/internal markers", async () => {
-    const bash = new Bash({
-      fs: new ReadWriteFs({ root: tempDir, allowSymlinks: true }),
-      cwd: "/",
-      python: true,
-    });
-
-    const result = await bash.exec("python3 /pkg");
-
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(
-      "python3: can't open file '/pkg': EISDIR: illegal operation on a directory, read '/pkg'\n",
-    );
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).not.toContain(tempDir);
-    expect(result.stderr).not.toContain("/Users/");
-    expect(result.stderr).not.toContain("node:internal");
-    expect(result.stderr).not.toContain("file://");
-  });
-
-  it("sqlite3 open-directory error does not expose host/internal markers", async () => {
-    const bash = new Bash({
-      fs: new ReadWriteFs({ root: tempDir, allowSymlinks: true }),
-      cwd: "/",
-      python: true,
-    });
-
-    const result = await bash.exec("sqlite3 /dbdir 'select 1;'");
-
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(
-      "sqlite3: unable to open database \"/dbdir\": EISDIR: illegal operation on a directory, read '/dbdir'\n",
     );
     expect(result.exitCode).toBe(1);
     expect(result.stderr).not.toContain(tempDir);

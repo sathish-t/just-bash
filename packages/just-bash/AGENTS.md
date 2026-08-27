@@ -16,7 +16,7 @@
 - Always make sure to build before using dist
 - Biome rules often have the same name as eslint rules (if you are lookinf for one)
 - Error / show usage on unknown flags in commands and built-ins (unless real bash also ignores)
-- Dependencies that use wasm are not allowed (exception: sql.js for SQLite, approved for security sandboxing). Binary npm packages are fine
+- Dependencies that use wasm are not allowed. Binary npm packages are fine
 - When you implement multiple tasks (such as multiple commands or builtins or discovered bugs), so them one at a time, create tests, validate, and then move on
 - Running tests does not require building first
 
@@ -87,7 +87,6 @@ User-controlled data (stdin, arguments, file content, HTTP headers, environment 
 
 ### Common Vulnerable Patterns
 
-- HTTP header parsing (curl, fetch responses)
 - CSV/JSON/YAML parsing where keys come from data
 - Command argument parsing
 - Environment variable handling

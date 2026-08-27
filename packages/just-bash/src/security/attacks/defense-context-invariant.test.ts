@@ -3,7 +3,6 @@ import { Bash } from "../../Bash.js";
 import { awkCommand2 } from "../../commands/awk/awk2.js";
 import { jqCommand } from "../../commands/jq/jq.js";
 import { sedCommand } from "../../commands/sed/sed.js";
-import { yqCommand } from "../../commands/yq/yq.js";
 import { EMPTY_BYTES, unsafeBytesFromLatin1 } from "../../encoding.js";
 import { InMemoryFs } from "../../fs/in-memory-fs/in-memory-fs.js";
 import { createDefenseAwareCommandContext } from "../../interpreter/defense-aware-command-context.js";
@@ -126,17 +125,6 @@ describeDefense("Defense context invariant", () => {
       jqCommand.execute(
         ["."],
         createCommandContext({ stdin: unsafeBytesFromLatin1("{}\n") }),
-      ),
-    ).rejects.toBeInstanceOf(SecurityViolationError);
-  });
-
-  it("fails closed for yq/query-engine when defense context is missing", async () => {
-    vi.spyOn(DefenseInDepthBox, "isInSandboxedContext").mockReturnValue(false);
-
-    await expect(
-      yqCommand.execute(
-        ["."],
-        createCommandContext({ stdin: unsafeBytesFromLatin1("x: 1\n") }),
       ),
     ).rejects.toBeInstanceOf(SecurityViolationError);
   });

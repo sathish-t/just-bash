@@ -313,13 +313,11 @@ function createRevocableCommandContext(
     execWithInheritedStdin: dataDescriptor(
       wrapFunction(context.execWithInheritedStdin),
     ),
-    fetch: dataDescriptor(wrapFunction(context.fetch)),
     getRegisteredCommands: dataDescriptor(
       wrapFunction(context.getRegisteredCommands),
     ),
     sleep: dataDescriptor(wrapFunction(context.sleep)),
     trace: dataDescriptor(wrapFunction(context.trace)),
-    invokeTool: dataDescriptor(wrapFunction(context.invokeTool)),
     signal: dataDescriptor(facadeAbort?.signal),
   });
 
@@ -902,7 +900,6 @@ export async function executeExternalCommand(
         },
         true,
       ),
-    fetch: ctx.fetch,
     getRegisteredCommands: () => Array.from(ctx.commands.keys()),
     sleep: ctx.sleep,
     trace: ctx.trace,
@@ -911,8 +908,6 @@ export async function executeExternalCommand(
     coverage: ctx.coverage,
     signal: ctx.state.signal,
     requireDefenseContext: ctx.requireDefenseContext,
-    jsBootstrapCode: ctx.jsBootstrapCode,
-    invokeTool: ctx.invokeTool,
   };
   const originalCommand = (cmd as RuntimeCommand).internalOriginalCommand;
   let revokeOriginalCommandContext = () => {};

@@ -45,7 +45,7 @@ export interface DefenseInDepthConfig {
   /**
    * Violation types to exclude from blocking.
    * Use this when certain globals are required for legitimate purposes
-   * (e.g., WebAssembly for sql.js in sqlite3 worker).
+   * in a trusted runtime boundary.
    * Constructor-execution protections are non-excludable.
    */
   excludeViolationTypes?: SecurityViolationType[];
@@ -105,9 +105,6 @@ export type SecurityViolationType =
   | "process_argv"
   | "process_exec_path"
   | "process_chdir"
-  | "process_connected"
-  | "process_send"
-  | "process_channel"
   | "process_timing"
   | "module_load"
   | "webassembly"
@@ -116,8 +113,6 @@ export type SecurityViolationType =
   | "process_get_builtin_module"
   | "error_prepare_stack_trace"
   | "performance_timing"
-  | "process_stdout"
-  | "process_stderr"
   | "module_resolve_filename"
   | "dynamic_import_builtin"
   | "missing_defense_context"

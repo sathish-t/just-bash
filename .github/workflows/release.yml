@@ -73,17 +73,11 @@ jobs:
       - name: Build
         run: pnpm --filter './packages/*' build
 
-      - name: Check worker sync
-        run: pnpm check:worker-sync
-
       - name: Unit tests
         run: pnpm test:unit
 
       - name: Comparison tests
         run: pnpm test:comparison
-
-      - name: WASM tests
-        run: pnpm test:wasm
 
       - name: Bundle smoke test
         run: pnpm test:dist

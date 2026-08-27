@@ -13,13 +13,7 @@ import type { FunctionDefNode } from "./ast/types.js";
 import "./timers.js";
 import { combineAbortSignals } from "./abort-signals.js";
 import { utf8ByteLength } from "./commands/printf/escapes.js";
-import {
-  type CommandName,
-  createJavaScriptCommands,
-  createLazyCommands,
-  createNetworkCommands,
-  createPythonCommands,
-} from "./commands/registry.js";
+import { type CommandName, createLazyCommands } from "./commands/registry.js";
 import {
   type CustomCommand,
   createLazyCustomCommand,
@@ -58,11 +52,6 @@ import {
   type ExecutionLimits,
   resolveLimits,
 } from "./limits.js";
-import {
-  createSecureFetch,
-  type NetworkConfig,
-  type SecureFetch,
-} from "./network/index.js";
 import { LexerError } from "./parser/lexer.js";
 import { type ParseException, parse } from "./parser/parser.js";
 import {
@@ -98,29 +87,6 @@ export interface BashLogger {
   debug(message: string, data?: Record<string, unknown>): void;
 }
 
-export interface JavaScriptConfig {
-  /** Bootstrap JavaScript code to run before user scripts */
-  bootstrap?: string;
-  /**
-   * Tool invocation hook. When provided, code running in `js-exec` gets a
-   * global `tools` proxy that routes calls through this callback synchronously
-   * (the worker blocks via `Atomics.wait` while the host resolves the call).
-   *
-   * - `path`: dot-separated tool path (e.g. `"math.add"`). The proxy builds
-   *   it from JS property access — `tools.math.add(...)` becomes `"math.add"`.
-   * - `argsJson`: JSON-stringified args object, or empty string for no args.
-   * - return: JSON-stringified result, or empty string for `undefined`.
-   * - throw: propagates as a catchable exception inside the sandbox.
-   *
-   * Setting `invokeTool` implicitly enables `js-exec` (no separate
-   * `javascript: true` needed). Pair with `customCommands` if you want the
-   * same tools available as bash commands. The companion package
-   * `@just-bash/executor` produces a matching `invokeTool` + `commands` pair
-   * from inline tools and/or `@executor-js/sdk` discovery.
-   */
-  invokeTool?: (path: string, argsJson: string) => Promise<string>;
-}
-
 export interface BashOptions {
   files?: InitialFiles;
   env?: Record<string, string>;
@@ -145,29 +111,6 @@ export interface BashOptions {
    * @deprecated Use executionLimits.maxLoopIterations instead
    */
   maxLoopIterations?: number;
-  /**
-   * Custom secure fetch function. When provided, used instead of creating one
-   * from NetworkConfig. Enables wrapping the fetch layer with custom logic
-   * (e.g., policy evaluation) while keeping built-in curl unmodified.
-   * Network commands (curl, wget) are registered when either `fetch` or `network` is provided.
-   */
-  fetch?: SecureFetch;
-  /**
-   * Network configuration for commands like curl.
-   * Network access is disabled by default - you must explicitly configure allowed URLs.
-   */
-  network?: NetworkConfig;
-  /**
-   * Enable python3/python commands.
-   * Python is disabled by default as it introduces additional security surface
-   * (arbitrary code execution via CPython Emscripten).
-   */
-  python?: boolean;
-  /**
-   * Enable js-exec command for sandboxed JavaScript execution via QuickJS.
-   * Disabled by default. Can be a boolean or a config object with bootstrap code.
-   */
-  javascript?: boolean | JavaScriptConfig;
   /**
    * Optional list of command names to register.
    * If not provided, all built-in commands are available.
@@ -312,14 +255,11 @@ export class Bash {
   private commands: CommandRegistry = new Map();
   private useDefaultLayout: boolean = false;
   private limits: Required<ExecutionLimits>;
-  private secureFetch?: SecureFetch;
   private sleepFn?: (ms: number) => Promise<void>;
   private traceFn?: TraceCallback;
   private logger?: BashLogger;
   private defenseInDepthConfig?: DefenseInDepthConfig | boolean;
   private coverageWriter?: FeatureCoverageWriter;
-  private jsBootstrapCode?: string;
-  private invokeToolFn?: (path: string, argsJson: string) => Promise<string>;
   // biome-ignore lint/suspicious/noExplicitAny: type-erased plugin storage for untyped API
   private transformPlugins: TransformPlugin<any>[] = [];
 
@@ -369,13 +309,6 @@ export class Bash {
       // Add user-provided env vars
       ...Object.entries(options.env ?? {}),
     ]);
-
-    // Create secure fetch: prefer explicit fetch, fall back to network config
-    if (options.fetch) {
-      this.secureFetch = options.fetch;
-    } else if (options.network) {
-      this.secureFetch = createSecureFetch(options.network);
-    }
 
     // Store sleep function if provided (for mock clocks in testing)
     this.sleepFn = options.sleep;
@@ -484,40 +417,6 @@ export class Bash {
 
     for (const cmd of createLazyCommands(options.commands)) {
       this.registerBundledCommand(cmd);
-    }
-
-    // Register network commands when fetch or network is configured
-    if (options.fetch || options.network) {
-      for (const cmd of createNetworkCommands()) {
-        this.registerBundledCommand(cmd);
-      }
-    }
-
-    // Register python commands only when explicitly enabled
-    // Python introduces additional security surface (arbitrary code execution)
-    if (options.python) {
-      for (const cmd of createPythonCommands()) {
-        this.registerBundledCommand(cmd);
-      }
-    }
-
-    const jsConfig: JavaScriptConfig =
-      typeof options.javascript === "object"
-        ? options.javascript
-        : Object.create(null);
-
-    // Register javascript commands when JS is enabled or an invokeTool hook
-    // is provided (the hook is meaningless without js-exec).
-    if (options.javascript || jsConfig.invokeTool) {
-      for (const cmd of createJavaScriptCommands()) {
-        this.registerBundledCommand(cmd);
-      }
-      if (jsConfig.bootstrap) {
-        this.jsBootstrapCode = jsConfig.bootstrap;
-      }
-      if (jsConfig.invokeTool) {
-        this.invokeToolFn = jsConfig.invokeTool;
-      }
     }
 
     // Register custom commands (after built-ins so they can override)
@@ -813,13 +712,10 @@ export class Bash {
                 effectiveOptions.signal,
                 childStdinAlreadyAccounted,
               ),
-            fetch: this.secureFetch,
             sleep: this.sleepFn,
             trace: this.traceFn,
             coverage: this.coverageWriter,
             requireDefenseContext: defenseBox?.isEnabled() === true,
-            jsBootstrapCode: this.jsBootstrapCode,
-            invokeTool: this.invokeToolFn,
           };
 
           const interpreter = new Interpreter(interpreterOptions, execState);
@@ -1058,8 +954,7 @@ function scanLineQuoteState(
  *
  * Leading whitespace is only stripped from lines that begin outside any quote.
  * A line that begins inside an unterminated single- or double-quoted string is
- * literal quoted content (e.g. the body of `python3 -c "..."`), so it is kept
- * verbatim.
+ * literal quoted content, so it is kept verbatim.
  *
  * Heredocs are detected by looking for << or <<- operators and their delimiters.
  */

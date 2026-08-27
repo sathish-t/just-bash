@@ -31,7 +31,6 @@ import type { ExecutionScope } from "../execution-scope.js";
 import type { IFileSystem } from "../fs/interface.js";
 import { mapToRecord } from "../helpers/env.js";
 import type { ExecutionLimits } from "../limits.js";
-import type { SecureFetch } from "../network/index.js";
 import { ParseException } from "../parser/types.js";
 import {
   DefenseInDepthBox,
@@ -129,8 +128,6 @@ export interface InterpreterOptions {
     options?: InterpreterExecOptions,
     stdinAlreadyAccounted?: boolean,
   ) => Promise<ExecResult>;
-  /** Optional secure fetch function for network-enabled commands */
-  fetch?: SecureFetch;
   /** Optional sleep function for testing with mock clocks */
   sleep?: (ms: number) => Promise<void>;
   /** Optional trace callback for performance profiling */
@@ -141,10 +138,6 @@ export interface InterpreterOptions {
    * When true, fail closed if execution occurs outside defense async context.
    */
   requireDefenseContext?: boolean;
-  /** Bootstrap JavaScript code for js-exec */
-  jsBootstrapCode?: string;
-  /** Tool invoker hook for js-exec's `tools` proxy */
-  invokeTool?: (path: string, argsJson: string) => Promise<string>;
 }
 
 export class Interpreter {
@@ -161,13 +154,10 @@ export class Interpreter {
       executeScript: this.executeScript.bind(this),
       executeStatement: this.executeStatement.bind(this),
       executeCommand: this.executeCommand.bind(this),
-      fetch: options.fetch,
       sleep: options.sleep,
       trace: options.trace,
       coverage: options.coverage,
       requireDefenseContext: options.requireDefenseContext ?? false,
-      jsBootstrapCode: options.jsBootstrapCode,
-      invokeTool: options.invokeTool,
     };
   }
 

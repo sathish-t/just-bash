@@ -2,7 +2,7 @@
  * Query expression parser
  *
  * Tokenizes and parses jq-style filter expressions into an AST.
- * Used by jq, yq, and other query-based commands.
+ * Used by jq.
  */
 
 // Re-export types from parser-types.ts

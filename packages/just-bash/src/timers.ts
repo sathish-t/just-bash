@@ -90,4 +90,4 @@ export const _setInterval: typeof globalThis.setInterval = ((
 export const _clearInterval: typeof globalThis.clearInterval =
   nativeClearInterval;
 
-// _SharedArrayBuffer, _Atomics, _performanceNow moved to security/trusted-globals.ts
+// _performanceNow is captured in security/trusted-globals.ts.

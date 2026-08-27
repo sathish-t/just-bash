@@ -1,6 +1,6 @@
+import * as nodeModule from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 import { DefenseInDepthBox } from "./defense-in-depth-box.js";
-import { WorkerDefenseInDepth } from "./worker-defense-in-depth.js";
 
 const describeDefense =
   typeof nodeModule.registerHooks === "function" ? describe : describe.skip;
@@ -138,31 +138,4 @@ describeDefense("defense intrinsic protection", () => {
       Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator),
     ).toEqual(before);
   });
-
-  it("protects cached references in the disposable worker realm", () => {
-    const cachedMath = Math;
-    const cachedJson = JSON;
-    const cachedReflect = Reflect;
-    const originals = [cachedMath.floor, cachedJson.parse, cachedReflect.get];
-    const defense = new WorkerDefenseInDepth({});
-
-    for (const mutate of [
-      () => Object.defineProperty(cachedMath, "floor", { value: () => 0 }),
-      () => Reflect.defineProperty(cachedJson, "parse", { value: () => 0 }),
-      () => Reflect.set(cachedReflect, "get", () => 0),
-    ]) {
-      try {
-        mutate();
-      } catch {
-        // Expected for frozen intrinsics.
-      }
-    }
-    defense.deactivate();
-
-    expect([cachedMath.floor, cachedJson.parse, cachedReflect.get]).toEqual(
-      originals,
-    );
-  });
 });
-
-import * as nodeModule from "node:module";

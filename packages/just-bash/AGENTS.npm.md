@@ -64,23 +64,21 @@ const result = await bash.exec("cat input.txt | grep pattern");
 
 2. **No real filesystem**: By default, commands only see the virtual filesystem. Use `OverlayFs` to read from a real directory (writes stay in memory).
 
-3. **No network by default**: `curl` doesn't exist unless you configure `network` options with URL allowlists.
+3. **No binaries/WASM**: Only built-in commands work. You cannot run node, python, or other binaries.
 
-4. **No binaries/WASM**: Only built-in commands work. You cannot run node, python, or other binaries.
+4. **ReadWriteFs root separation**: If you use `ReadWriteFs`, point it at a workspace directory, not at the installed `just-bash` package or other trusted runtime code.
 
-5. **ReadWriteFs root separation**: If you use `ReadWriteFs`, point it at a workspace directory, not at the installed `just-bash` package or other trusted runtime code.
-
-6. **UTC by default**: `date` always shows UTC (`%Z=UTC`, `%z=+0000`) unless the host opts in by passing `TZ` as an env var (e.g. `new Bash({ env: { TZ: "America/New_York" } })`). `-u` always forces UTC; an invalid `$TZ` falls back to UTC.
+5. **UTC by default**: `date` always shows UTC (`%Z=UTC`, `%z=+0000`) unless the host opts in by passing `TZ` as an env var (e.g. `new Bash({ env: { TZ: "America/New_York" } })`). `-u` always forces UTC; an invalid `$TZ` falls back to UTC.
 
 ## Available Commands
 
 **Text processing**: `awk`, `cat`, `column`, `comm`, `cut`, `egrep`, `expand`, `fgrep`, `fold`, `grep`, `head`, `join`, `nl`, `paste`, `rev`, `rg`, `sed`, `sort`, `strings`, `tac`, `tail`, `tr`, `unexpand`, `uniq`, `wc`, `xargs`
 
-**Data processing**: `jq` (JSON), `js-exec` (JavaScript/TypeScript via QuickJS), `python3`/`python` (Python via WASM/CPython), `sqlite3` (SQLite), `xan` (CSV), `yq` (YAML/XML/TOML/CSV)
+**Data processing**: `jq` (JSON)
 
 **File operations**: `basename`, `chmod`, `cp`, `dirname`, `du`, `file`, `find`, `ln`, `ls`, `mkdir`, `mv`, `od`, `pwd`, `readlink`, `rm`, `rmdir`, `split`, `stat`, `touch`, `tree`
 
-**Utilities**: `alias`, `base64`, `bash`, `clear`, `curl`, `date`, `diff`, `echo`, `env`, `expr`, `false`, `gzip`, `gunzip`, `help`, `history`, `hostname`, `html-to-markdown`, `md5sum`, `printenv`, `printf`, `seq`, `sh`, `sha1sum`, `sha256sum`, `sleep`, `tar`, `tee`, `time`, `timeout`, `true`, `unalias`, `which`, `whoami`, `zcat`
+**Utilities**: `alias`, `base64`, `bash`, `clear`, `date`, `diff`, `echo`, `env`, `expr`, `false`, `gzip`, `gunzip`, `help`, `history`, `hostname`, `md5sum`, `printenv`, `printf`, `seq`, `sh`, `sha1sum`, `sha256sum`, `sleep`, `tar`, `tee`, `time`, `timeout`, `true`, `unalias`, `which`, `whoami`, `zcat`
 
 All commands support `--help` for usage details.
 
@@ -100,116 +98,6 @@ jq '[.items[] | {id, name}]' data.json
 
 # From stdin
 echo '{"x":1}' | jq '.x'
-```
-
-### YAML - `yq`
-
-```bash
-# Extract value
-yq '.config.database.host' config.yaml
-
-# Output as JSON
-yq -o json '.' config.yaml
-
-# Filter with jq syntax
-yq '.users[] | select(.role == "admin")' users.yaml
-
-# Modify file in-place
-yq -i '.version = "2.0"' config.yaml
-```
-
-### TOML - `yq`
-
-```bash
-# Read TOML (auto-detected from .toml extension)
-yq '.package.name' Cargo.toml
-yq '.tool.poetry.version' pyproject.toml
-
-# Convert TOML to JSON
-yq -o json '.' config.toml
-
-# Convert YAML to TOML
-yq -o toml '.' config.yaml
-```
-
-### CSV/TSV - `yq -p csv`
-
-```bash
-# Read CSV (auto-detects from .csv/.tsv extension)
-yq '.[0].name' data.csv
-yq '.[0].name' data.tsv
-
-# Filter rows
-yq '[.[] | select(.status == "active")]' data.csv
-
-# Convert CSV to JSON
-yq -o json '.' data.csv
-```
-
-### Front-matter - `yq --front-matter`
-
-```bash
-# Extract YAML front-matter from markdown
-yq --front-matter '.title' post.md
-yq -f '.tags[]' blog-post.md
-
-# Works with TOML front-matter (+++) too
-yq -f '.date' hugo-post.md
-```
-
-### XML - `yq -p xml`
-
-```bash
-# Extract element
-yq '.root.users.user[0].name' data.xml
-
-# Access attributes (use +@ prefix)
-yq '.root.item["+@id"]' data.xml
-
-# Convert XML to JSON
-yq -p xml -o json '.' data.xml
-```
-
-### INI - `yq -p ini`
-
-```bash
-# Read INI section value
-yq '.database.host' config.ini
-
-# Convert INI to JSON
-yq -p ini -o json '.' config.ini
-```
-
-### HTML - `html-to-markdown`
-
-```bash
-# Convert HTML to markdown
-html-to-markdown page.html
-
-# From stdin
-echo '<h1>Title</h1><p>Text</p>' | html-to-markdown
-```
-
-### Format Conversion with yq
-
-```bash
-# JSON to YAML
-yq -p json '.' data.json
-
-# YAML to JSON
-yq -o json '.' data.yaml
-
-# YAML to TOML
-yq -o toml '.' config.yaml
-
-# TOML to JSON
-yq -o json '.' Cargo.toml
-
-# CSV to JSON
-yq -p csv -o json '.' data.csv
-
-# XML to YAML
-yq -p xml '.' data.xml
 ```
 
 ## Common Patterns
@@ -277,7 +165,6 @@ Common exit codes:
 ## Security Model
 
 - Virtual filesystem is isolated from the real system
-- Network access requires explicit URL allowlists
 - Execution limits prevent infinite loops and resource exhaustion
 - No shell injection possible (commands are parsed, not eval'd)
 
@@ -306,8 +193,6 @@ const bash = new Bash({
 **Output size limits**: AWK, sed, jq, and printf enforce `maxStringLength` on their output buffers. Commands that exceed the limit exit with code 126.
 
 **File read size limits**: `OverlayFs` and `ReadWriteFs` default to a 10MB max file read size. Override with `maxFileReadSize` in filesystem options (set to `0` to disable).
-
-**Network response size**: `maxResponseSize` in `NetworkConfig` caps HTTP response bodies (default: 10MB).
 
 ## Discovering Types
 
@@ -342,21 +227,13 @@ resolve at runtime.
 
 It matters when you run just-bash through **another** bundler (Next.js,
 webpack, esbuild, rollup) for a serverless or edge target. That bundler will try
-to inline these, and some of them cannot be inlined. Mark all six as external:
+to inline these, and some of them cannot be inlined. Mark these three as external:
 
 | Package | What it is |
 | --- | --- |
 | `@mongodb-js/zstd` | native binding (`optionalDependencies`) |
 | `node-liblzma` | native binding (`optionalDependencies`) |
-| `sql.js` | ships a `.wasm` asset |
-| `quickjs-emscripten` | ships a `.wasm` asset |
 | `seek-bzip` | CommonJS-only bzip2 decoder |
-| `guarded-fetch` | imports `node:dns/promises`, `node:net`, `node:dns` |
-
-`guarded-fetch` is the one that bites bundlers targeting a non-Node context:
-inlining it pulls in Node builtins, and a bundler whose chunking context has no
-concept of them fails the build (Turbopack reports `the chunking context
-(unknown) does not support external modules (request: node:dns/promises)`).
 
 Next.js 15+:
 
@@ -368,9 +245,6 @@ const nextConfig = {
     "@mongodb-js/zstd",
     "node-liblzma",
     "seek-bzip",
-    "sql.js",
-    "quickjs-emscripten",
-    "guarded-fetch",
   ],
 };
 ```
@@ -379,11 +253,10 @@ Older Next.js uses `experimental.serverComponentsExternalPackages`. webpack:
 add them to `externals` (or use `webpack-node-externals`). esbuild/rollup:
 `--external:<name>` / `external: [...]`.
 
-**Node version**: just-bash requires Node `>=20.19` (`guarded-fetch`'s floor).
+**Node version**: just-bash requires Node `>=20.19`.
 
 **Optional dependencies**: `@mongodb-js/zstd` and `node-liblzma` are declared
 in `optionalDependencies`, so an install that cannot build them still succeeds.
 Only the compression they provide is lost: `tar -J` then exits non-zero with
 `xz compression requires node-liblzma which failed to load`, rather than
-crashing the interpreter. The other four are regular dependencies and are
-required.
+crashing the interpreter. `seek-bzip` is a regular dependency and is required.

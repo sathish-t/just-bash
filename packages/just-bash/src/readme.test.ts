@@ -12,12 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { Bash } from "./Bash.js";
-import {
-  getCommandNames,
-  getJavaScriptCommandNames,
-  getNetworkCommandNames,
-  getPythonCommandNames,
-} from "./commands/registry.js";
+import { getCommandNames } from "./commands/registry.js";
 
 const README_PATH = path.join(import.meta.dirname, "..", "README.md");
 const AGENTS_PATH = path.join(import.meta.dirname, "..", "AGENTS.npm.md");
@@ -230,7 +225,6 @@ export interface CreateBashToolOptions {
   files?: Record<string, string>;
   cwd?: string;
   env?: Record<string, string>;
-  network?: { allowedUrlPrefixes?: string[] };
 }
 export function createBashTool(options?: CreateBashToolOptions): any;
 `;
@@ -317,20 +311,12 @@ describe("README validation", () => {
     it("should list all registered commands", () => {
       const readme = parseReadme();
       const readmeCommands = extractReadmeCommands(readme);
-      const registryCommands = new Set([
-        ...getCommandNames(),
-        ...getNetworkCommandNames(),
-        ...getPythonCommandNames(),
-        ...getJavaScriptCommandNames(),
-      ]);
-
-      // Stub commands that redirect to other commands — not documented separately
-      const stubs = new Set(["node"]); // redirects to js-exec
+      const registryCommands = new Set(getCommandNames());
 
       // Commands in registry but not in README
       const missingFromReadme: string[] = [];
       for (const cmd of registryCommands) {
-        if (!readmeCommands.has(cmd) && !stubs.has(cmd)) {
+        if (!readmeCommands.has(cmd)) {
           missingFromReadme.push(cmd);
         }
       }
@@ -383,20 +369,12 @@ describe("AGENTS.npm.md validation", () => {
     it("should list all registered commands", () => {
       const agents = parseAgents();
       const agentsCommands = extractAgentsCommands(agents);
-      const registryCommands = new Set([
-        ...getCommandNames(),
-        ...getNetworkCommandNames(),
-        ...getPythonCommandNames(),
-        ...getJavaScriptCommandNames(),
-      ]);
-
-      // Stub commands that redirect to other commands — not documented separately
-      const stubs = new Set(["node"]); // redirects to js-exec
+      const registryCommands = new Set(getCommandNames());
 
       // Commands in registry but not in AGENTS.npm.md
       const missingFromAgents: string[] = [];
       for (const cmd of registryCommands) {
-        if (!agentsCommands.has(cmd) && !stubs.has(cmd)) {
+        if (!agentsCommands.has(cmd)) {
           missingFromAgents.push(cmd);
         }
       }
@@ -485,33 +463,6 @@ describe("AGENTS.npm.md Bash examples", () => {
         "/data/input.txt": "hello world\ntest pattern\nfoo bar\n",
         "/data/data.json":
           '{"items": [{"name": "a", "active": true}, {"name": "b", "active": false}], "name": "test", "users": [{"active": true, "role": "admin"}, {"active": false, "role": "user"}]}',
-        "/data/data.csv":
-          "name,category,value,status\nalice,A,10,active\nbob,B,20,inactive\n",
-        "/data/config.yaml":
-          "config:\n  database:\n    host: localhost\n    port: 5432\nusers:\n  - name: alice\n    role: admin\n  - name: bob\n    role: user\n",
-        "/data/data.yaml": "name: test\nvalue: 42\n",
-        "/data/users.yaml":
-          "users:\n  - name: alice\n    role: admin\n  - name: bob\n    role: user\n",
-        "/data/data.xml":
-          '<root><users><user><name>alice</name></user></users><item id="123">test</item></root>',
-        "/data/config.ini": "[database]\nhost=localhost\nport=5432\n",
-        "/data/page.html": "<h1>Title</h1><p>Some text content</p>",
-        // TOML files
-        "/data/Cargo.toml":
-          '[package]\nname = "my-project"\nversion = "1.0.0"\n\n[dependencies]\nserde = "1.0"\n',
-        "/data/pyproject.toml":
-          '[tool.poetry]\nname = "my-package"\nversion = "2.0.0"\n\n[tool.poetry.dependencies]\npython = "^3.9"\n',
-        "/data/config.toml":
-          '[server]\nhost = "localhost"\nport = 8080\n\n[database]\nurl = "postgres://localhost/db"\n',
-        // TSV file
-        "/data/data.tsv": "name\tcategory\tvalue\nalice\tA\t10\nbob\tB\t20\n",
-        // Front-matter files
-        "/data/post.md":
-          "---\ntitle: My Post\nauthor: Alice\ntags:\n  - coding\n  - tutorial\n---\n\n# Content here\n\nThis is the body of the post.\n",
-        "/data/blog-post.md":
-          "---\ntitle: Blog Post\ntags:\n  - tech\n  - news\n---\n\n# Blog content\n",
-        "/data/hugo-post.md":
-          '+++\ntitle = "Hugo Post"\ndate = "2024-01-01"\ndraft = false\n+++\n\n# Hugo content\n',
         "/src/app.ts": "// TODO: implement\nexport const x = 1;",
         "/src/lib.ts": "// helper\nexport const y = 2;",
         // Mock type definition files for "Discovering Types" examples
@@ -519,8 +470,6 @@ describe("AGENTS.npm.md Bash examples", () => {
           'export { Bash } from "./Bash";\nexport type { BashOptions } from "./Bash";',
         "/data/node_modules/just-bash/dist/Bash.d.ts":
           "export interface BashOptions {\n  files?: Record<string, string>;\n  cwd?: string;\n  env?: Record<string, string>;\n}\nexport interface ExecResult {\n  stdout: string;\n  stderr: string;\n  exitCode: number;\n}\nexport class Bash {\n  constructor(options?: BashOptions);\n  exec(command: string): Promise<ExecResult>;\n}",
-        "/data/node_modules/just-bash/dist/ai/index.d.ts":
-          "export interface CreateBashToolOptions {\n  files?: Record<string, string>;\n  network?: { allowedUrlPrefixes: string[] };\n}\nexport function createBashTool(options?: CreateBashToolOptions): Tool;",
       },
       cwd: "/data",
     });

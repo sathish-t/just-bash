@@ -85,7 +85,6 @@ export type CommandName =
   | "sha1sum"
   | "sha256sum"
   | "file"
-  | "html-to-markdown"
   | "help"
   | "which"
   | "tac"
@@ -95,27 +94,11 @@ export type CommandName =
   | "gunzip"
   | "zcat"
   | "tar"
-  | "yq"
-  | "xan"
-  | "sqlite3"
   | "time"
   | "whoami";
 
-/** Network command names (only available when network is configured) */
-export type NetworkCommandName = "curl";
-
-/** Python command names (only available when python is explicitly enabled) */
-export type PythonCommandName = "python3" | "python";
-
-/** JavaScript command names (only available when javascript is explicitly enabled) */
-export type JavaScriptCommandName = "js-exec" | "node";
-
-/** All command names including network, python, and javascript commands */
-export type AllCommandName =
-  | CommandName
-  | NetworkCommandName
-  | PythonCommandName
-  | JavaScriptCommandName;
+/** All bundled command names. */
+export type AllCommandName = CommandName;
 
 // Statically analyzable loaders - each import() call is a literal string
 const commandLoaders: LazyCommandDef<CommandName>[] = [
@@ -423,14 +406,6 @@ const commandLoaders: LazyCommandDef<CommandName>[] = [
     load: async () => (await import("./file/file.js")).fileCommand,
   },
 
-  // HTML processing
-  {
-    name: "html-to-markdown",
-    load: async () =>
-      (await import("./html-to-markdown/html-to-markdown.js"))
-        .htmlToMarkdownCommand,
-  },
-
   // Help
   {
     name: "help",
@@ -476,7 +451,7 @@ const commandLoaders: LazyCommandDef<CommandName>[] = [
   },
 ];
 
-// tar, yq, xan, and sqlite3 don't work in browsers
+// tar doesn't work in browsers
 // __BROWSER__ is defined by esbuild at build time for browser bundles
 declare const __BROWSER__: boolean | undefined;
 if (typeof __BROWSER__ === "undefined" || !__BROWSER__) {
@@ -484,55 +459,7 @@ if (typeof __BROWSER__ === "undefined" || !__BROWSER__) {
     name: "tar" as CommandName,
     load: async () => (await import("./tar/tar.js")).tarCommand,
   });
-  commandLoaders.push({
-    name: "yq" as CommandName,
-    load: async () => (await import("./yq/yq.js")).yqCommand,
-  });
-  commandLoaders.push({
-    name: "xan" as CommandName,
-    load: async () => (await import("./xan/xan.js")).xanCommand,
-  });
-  commandLoaders.push({
-    name: "sqlite3" as CommandName,
-    load: async () => (await import("./sqlite3/sqlite3.js")).sqlite3Command,
-  });
 }
-
-// Python commands - only registered when python is explicitly enabled
-// These introduce additional security surface (arbitrary code execution)
-const pythonCommandLoaders: LazyCommandDef<PythonCommandName>[] = [];
-// __BROWSER__ is defined by esbuild at build time for browser bundles
-if (typeof __BROWSER__ === "undefined" || !__BROWSER__) {
-  pythonCommandLoaders.push({
-    name: "python3",
-    load: async () => (await import("./python3/python3.js")).python3Command,
-  });
-  pythonCommandLoaders.push({
-    name: "python",
-    load: async () => (await import("./python3/python3.js")).pythonCommand,
-  });
-}
-
-// JavaScript commands - only registered when javascript is explicitly enabled
-const jsCommandLoaders: LazyCommandDef<JavaScriptCommandName>[] = [];
-if (typeof __BROWSER__ === "undefined" || !__BROWSER__) {
-  jsCommandLoaders.push({
-    name: "js-exec",
-    load: async () => (await import("./js-exec/js-exec.js")).jsExecCommand,
-  });
-  jsCommandLoaders.push({
-    name: "node",
-    load: async () => (await import("./js-exec/js-exec.js")).nodeStubCommand,
-  });
-}
-
-// Network commands - only registered when network is configured
-const networkCommandLoaders: LazyCommandDef<NetworkCommandName>[] = [
-  {
-    name: "curl",
-    load: async () => (await import("./curl/curl.js")).curlCommand,
-  },
-];
 
 // Cache for loaded commands
 const cache = new Map<string, RuntimeCommand>();
@@ -551,9 +478,8 @@ function createLazyCommand(def: LazyCommandDef): RuntimeCommand {
 
       if (!cmd) {
         // Lazy imports run inside the defense-in-depth context.
-        // Module loading may access blocked globals (e.g., worker_threads
-        // uses SharedArrayBuffer, sql.js uses WebAssembly), so we suspend
-        // blocking during the import.
+        // Module loading may access blocked globals, so we suspend blocking
+        // during the import.
         cmd = await DefenseInDepthBox.runTrustedAsync(() => def.load());
         cache.set(def.name, cmd);
       }
@@ -573,21 +499,14 @@ function createLazyCommand(def: LazyCommandDef): RuntimeCommand {
 }
 
 /**
- * Gets all available command names (excludes network commands)
+ * Gets all available command names.
  */
 export function getCommandNames(): string[] {
   return commandLoaders.map((def) => def.name);
 }
 
 /**
- * Gets all network command names
- */
-export function getNetworkCommandNames(): string[] {
-  return networkCommandLoaders.map((def) => def.name);
-}
-
-/**
- * Creates all lazy commands for registration (excludes network commands)
+ * Creates all lazy commands for registration.
  * @param filter Optional array of command names to include. If not provided, all commands are created.
  */
 export function createLazyCommands(filter?: CommandName[]): RuntimeCommand[] {
@@ -595,45 +514,6 @@ export function createLazyCommands(filter?: CommandName[]): RuntimeCommand[] {
     ? commandLoaders.filter((def) => filter.includes(def.name))
     : commandLoaders;
   return loaders.map(createLazyCommand);
-}
-
-/**
- * Creates network commands for registration (curl, etc.)
- * These are only registered when network is explicitly configured.
- */
-export function createNetworkCommands(): RuntimeCommand[] {
-  return networkCommandLoaders.map(createLazyCommand);
-}
-
-/**
- * Gets all python command names
- */
-export function getPythonCommandNames(): string[] {
-  return pythonCommandLoaders.map((def) => def.name);
-}
-
-/**
- * Creates python commands for registration (python3, python).
- * These are only registered when python is explicitly enabled.
- * Note: Python introduces additional security surface (arbitrary code execution).
- */
-export function createPythonCommands(): RuntimeCommand[] {
-  return pythonCommandLoaders.map(createLazyCommand);
-}
-
-/**
- * Gets all javascript command names
- */
-export function getJavaScriptCommandNames(): string[] {
-  return jsCommandLoaders.map((def) => def.name);
-}
-
-/**
- * Creates javascript commands for registration (js-exec).
- * These are only registered when javascript is explicitly enabled.
- */
-export function createJavaScriptCommands(): RuntimeCommand[] {
-  return jsCommandLoaders.map(createLazyCommand);
 }
 
 /**

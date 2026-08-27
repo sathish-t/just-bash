@@ -11,7 +11,6 @@ import type {
 import type { ExecutionScope } from "../execution-scope.js";
 import type { IFileSystem } from "../fs/interface.js";
 import type { ExecutionLimits } from "../limits.js";
-import type { SecureFetch } from "../network/index.js";
 import type {
   CommandExecOptions,
   CommandRegistry,
@@ -485,8 +484,6 @@ export interface InterpreterContext {
     stdin: string,
     stdinOwned?: boolean,
   ) => Promise<ExecResult>;
-  /** Optional secure fetch function for network-enabled commands */
-  fetch?: SecureFetch;
   /** Optional sleep function for testing with mock clocks */
   sleep?: (ms: number) => Promise<void>;
   /** Optional trace callback for performance profiling */
@@ -500,14 +497,4 @@ export interface InterpreterContext {
    * sandbox async context. Used to fail closed on context-loss bugs.
    */
   requireDefenseContext?: boolean;
-  /**
-   * Bootstrap JavaScript code for js-exec.
-   * Threaded through the context chain instead of shell env.
-   */
-  jsBootstrapCode?: string;
-  /**
-   * Tool invoker hook. When present, js-exec sets up a `tools` proxy that
-   * routes calls through this callback.
-   */
-  invokeTool?: (path: string, argsJson: string) => Promise<string>;
 }

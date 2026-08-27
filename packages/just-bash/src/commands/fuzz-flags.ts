@@ -61,8 +61,6 @@ import { flagsForFuzzing as head } from "./head/head.js";
 import { flagsForFuzzing as help } from "./help/help.js";
 import { flagsForFuzzing as history } from "./history/history.js";
 import { flagsForFuzzing as hostname } from "./hostname/hostname.js";
-// HTML processing
-import { flagsForFuzzing as htmlToMarkdown } from "./html-to-markdown/html-to-markdown.js";
 import { flagsForFuzzing as join } from "./join/join.js";
 // Data processing
 import { flagsForFuzzing as jq } from "./jq/jq.js";
@@ -91,7 +89,6 @@ import { flagsForFuzzing as seq } from "./seq/seq.js";
 import { flagsForFuzzing as sleep } from "./sleep/sleep.js";
 import { flagsForFuzzing as sort } from "./sort/sort.js";
 import { flagsForFuzzing as split } from "./split/split.js";
-import { flagsForFuzzing as sqlite3 } from "./sqlite3/sqlite3.js";
 import { flagsForFuzzing as stat } from "./stat/stat.js";
 import { flagsForFuzzing as strings } from "./strings/strings.js";
 // Misc utilities
@@ -115,10 +112,8 @@ import { flagsForFuzzing as wc } from "./wc/wc.js";
 // PATH utilities
 import { flagsForFuzzing as which } from "./which/which.js";
 import { flagsForFuzzing as whoami } from "./whoami/whoami.js";
-import { flagsForFuzzing as xan } from "./xan/xan.js";
 // Utilities
 import { flagsForFuzzing as xargs } from "./xargs/xargs.js";
-import { flagsForFuzzing as yq } from "./yq/yq.js";
 
 const allFuzzInfo: CommandFuzzInfo[] = [
   echo,
@@ -190,7 +185,6 @@ const allFuzzInfo: CommandFuzzInfo[] = [
   sha1sum,
   sha256sum,
   file,
-  htmlToMarkdown,
   help,
   which,
   tac,
@@ -201,9 +195,6 @@ const allFuzzInfo: CommandFuzzInfo[] = [
   gunzip,
   zcat,
   tar,
-  yq,
-  xan,
-  sqlite3,
 ];
 
 /** Get all command fuzz info entries */

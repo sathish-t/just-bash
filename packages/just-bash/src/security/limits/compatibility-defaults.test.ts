@@ -43,7 +43,6 @@ describe("compatibility-safe execution limit configuration", () => {
     expect(limits.maxQueryDepth).toBe(1_000);
     expect(limits.maxQueryTokens).toBe(100_000);
     expect(limits.maxQueryElements).toBe(defaults.maxQueryElements);
-    expect(limits.maxCsvRows).toBe(defaults.maxCsvRows);
     expect(limits.maxTraversalEntries).toBe(defaults.maxTraversalEntries);
     expect(limits.maxTraversalWork).toBe(defaults.maxTraversalWork);
   });
@@ -136,26 +135,22 @@ describe("compatibility-safe execution limit configuration", () => {
     });
   });
 
-  it("accepts query depth and CSV volume beyond hardened defaults", async () => {
+  it("accepts query depth beyond hardened defaults", async () => {
     let nested: unknown = 0;
     const queryParts: string[] = [];
     for (let index = 0; index < 300; index++) {
       nested = { a: nested };
       queryParts.push(".a");
     }
-    const csv = `value\n${Array.from({ length: 10_001 }, (_, i) => i).join("\n")}\n`;
     const bash = new Bash({
       files: {
         "/deep.json": JSON.stringify(nested),
-        "/rows.csv": csv,
       },
     });
 
-    const result = await bash.exec(
-      `jq '${queryParts.join("")}' /deep.json; xan count /rows.csv`,
-    );
+    const result = await bash.exec(`jq '${queryParts.join("")}' /deep.json`);
     expect(result).toMatchObject({
-      stdout: "0\n10001\n",
+      stdout: "0\n",
       stderr: "",
       exitCode: 0,
     });

@@ -11,8 +11,8 @@ import { Bash } from "./Bash.js";
  * issue also lists operations that were NOT broken (heredoc literals, plain
  * `printf`/`echo`, on-disk bytes), which we pin as non-regression guards.
  *
- * Bytes are asserted directly here rather than via `python3`/`node` (as the
- * issue did) so the checks don't depend on the optional worker runtimes.
+ * Bytes are asserted directly here rather than via another runtime (as the
+ * issue did) so the checks only depend on the interpreter.
  */
 
 function utf8Hex(s: string): string {

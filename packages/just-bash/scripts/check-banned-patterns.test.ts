@@ -161,12 +161,6 @@ describe("check-banned-patterns filesystem boundary", () => {
       "Optional command limit with literal fallback",
     ],
     [
-      "raw secured fetch",
-      "src/network/fetch.ts",
-      "const response = fetch(currentUrl, options);\n",
-      "Raw fetch in secured network path",
-    ],
-    [
       "whole-buffer decompression",
       "src/commands/archive.ts",
       "const output = gunzipSync(input);\n",
@@ -221,12 +215,6 @@ describe("check-banned-patterns filesystem boundary", () => {
       "Raw filesystem error returned from adapter",
     ],
     [
-      "workers without request controller",
-      "src/commands/example.ts",
-      "const worker = new Worker(path);\n",
-      "Worker created without shared request controller",
-    ],
-    [
       "command-local maximums",
       "src/commands/example.ts",
       "const MAX_ROWS = 1234;\n",
@@ -245,53 +233,29 @@ describe("check-banned-patterns filesystem boundary", () => {
     );
   });
 
-  it("accepts reviewed gates and shared worker controller adoption", () => {
+  it("accepts reviewed gates", () => {
     const root = tempDirectory("just-bash-lint-approved-");
     mkdirSync(join(root, "src", "fs"), { recursive: true });
-    mkdirSync(join(root, "src", "commands"), { recursive: true });
     writeFileSync(
       join(root, "src", "fs", "gate.ts"),
       'import { openSync } from "node:fs";\nconst safe = new Map();\n',
-    );
-    writeFileSync(
-      join(root, "src", "commands", "worker.ts"),
-      'import { WorkerRequestController } from "../worker-request-controller.js";\n// @banned-pattern-ignore: constructor is owned by the request controller created below\nconst worker = new Worker(path);\nconst controller = new WorkerRequestController(worker);\n',
     );
 
     expect(runScanner(root, { report: false }).hasErrors).toBe(false);
   });
 
-  it("does not let one controller token exempt a second unmanaged Worker", () => {
-    const root = tempDirectory("just-bash-lint-worker-scope-");
-    const file = join(root, "src", "commands", "worker.ts");
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(
-      file,
-      'import { WorkerRequestController } from "../worker-request-controller.js";\n// @banned-pattern-ignore: first constructor is owned by its request controller\nconst first = new Worker(firstPath);\nconst controller = new WorkerRequestController(first);\nconst unmanaged = new Worker(secondPath);\n',
-    );
-
-    const result = runScanner(root, { report: false });
-    const workerFindings = result.violations.filter(
-      (item) =>
-        item.pattern.name ===
-        "Worker created without shared request controller",
-    );
-    expect(workerFindings).toHaveLength(1);
-    expect(workerFindings[0].content).toContain("secondPath");
-  });
-
   it("rejects an empty banned-pattern suppression reason", () => {
     const root = tempDirectory("just-bash-lint-empty-ignore-");
-    const file = join(root, "src", "commands", "worker.ts");
+    const file = join(root, "src", "commands", "example.ts");
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(
       file,
-      "// @banned-pattern-ignore:\nconst worker = new Worker(path);\n",
+      '// @banned-pattern-ignore:\nconst output = "x".repeat(width);\n',
     );
 
     const result = runScanner(root, { report: false });
     expect(result.violations.map((item) => item.pattern.name)).toContain(
-      "Worker created without shared request controller",
+      "Unchecked dynamic string or array amplification",
     );
   });
 });

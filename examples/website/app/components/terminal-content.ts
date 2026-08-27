@@ -32,9 +32,7 @@ export const CMD_GITHUB = "https://github.com/vercel-labs/just-bash\n";
 // File contents (generated from repo)
 export const FILE_README = `# just-bash
 
-A virtual bash environment with an in-memory filesystem, written in TypeScript and designed for AI agents.
-
-Broad support for standard unix commands and bash syntax with optional curl, Python, JS/TS, and sqlite support.
+A virtual bash environment with an in-memory filesystem, written in TypeScript and designed for AI agents, with broad support for standard Unix commands and bash syntax.
 
 **Note**: This is beta software. Use at your own risk and please provide feedback. See [security model](#security-model).
 
@@ -61,7 +59,7 @@ Each \`exec()\` call gets its own isolated shell state — environment variables
 Extend just-bash with your own TypeScript commands using \`defineCommand\`:
 
 \`\`\`typescript
-import { Bash, defineCommand } from "just-bash";
+import { Bash, decodeBytesToUtf8, defineCommand } from "just-bash";
 
 const hello = defineCommand("hello", async (args, ctx) => {
   const name = args[0] || "world";
@@ -69,7 +67,12 @@ const hello = defineCommand("hello", async (args, ctx) => {
 });
 
 const upper = defineCommand("upper", async (args, ctx) => {
-  return { stdout: ctx.stdin.toUpperCase(), stderr: "", exitCode: 0 };
+  // ctx.stdin is a ByteString — decode to text before string ops.
+  return {
+    stdout: decodeBytesToUtf8(ctx.stdin).toUpperCase(),
+    stderr: "",
+    exitCode: 0,
+  };
 });
 
 const bash = new Bash({ customCommands: [hello, upper] });
@@ -78,7 +81,31 @@ await bash.exec("hello Alice"); // "Hello, Alice!\\n"
 await bash.exec("echo 'test' | upper"); // "TEST\\n"
 \`\`\`
 
-Custom commands receive a \`CommandContext\` with \`fs\`, \`cwd\`, \`env\`, \`stdin\`, and \`exec\` (for subcommands), and work with pipes, redirections, and all shell features.
+Custom command callbacks receive a \`ResolvedCommandContext\` with \`fs\`, \`cwd\`,
+\`env\`, \`stdin\`, resolved \`limits\`, and \`exec\` (for subcommands), and work with
+pipes, redirections, and all shell features. The legacy \`CommandContext\` remains
+available for standalone context inputs; use \`createCommandContext({ fs })\` when
+calling a command directly with a fully resolved context.
+
+Host-provided commands preserve the legacy trusted default whether supplied to
+the \`Bash\` constructor, declared through \`defineCommand\`, loaded lazily, or
+added later with \`bash.registerCommand()\`. Set \`trusted: false\` (or use
+\`defineCommand(name, execute, { trusted: false })\`) to select the restricted
+extension boundary. Trusted commands run in the embedding process and should
+never execute guest-provided JavaScript.
+
+Every invocation is bound by \`maxExecutionTimeMs\`. On cancellation, just-bash
+revokes the command context immediately; \`maxExtensionCleanupTimeMs\` only
+bounds how long it waits for the now-authority-free command promise to settle.
+A late continuation cannot use \`ctx.fs\`, \`ctx.env\`, \`ctx.exec\`, or other context
+capabilities. Cleanup work that must run at scope closure can be registered with
+\`ctx.executionScope.registerCleanup()\`. A cleanup failure is returned as a
+generic exit-126 shell result rather than rejecting \`Bash.exec()\` or exposing
+host error details. JavaScript cannot forcibly stop arbitrary host code, so
+extensions requiring a hard guarantee against external side effects must run
+in a terminable worker or process. Tests that invoke command objects directly
+can use \`createCommandContext({ fs })\` to get a fully resolved context without
+duplicating internal defaults.
 
 <details>
 <summary><h2>Supported Commands</h2></summary>
@@ -93,11 +120,7 @@ Custom commands receive a \`CommandContext\` with \`fs\`, \`cwd\`, \`env\`, \`st
 
 ### Data Processing
 
-\`jq\` (JSON), \`sqlite3\` (SQLite), \`xan\` (CSV), \`yq\` (YAML/XML/TOML/CSV)
-
-### Optional Runtimes
-
-\`js-exec\` (JavaScript/TypeScript via QuickJS; requires \`javascript: true\`), \`python3\`/\`python\` (Python via CPython; requires \`python: true\`)
+\`jq\` (JSON)
 
 ### Compression & Archives
 
@@ -110,10 +133,6 @@ Custom commands receive a \`CommandContext\` with \`fs\`, \`cwd\`, \`env\`, \`st
 ### Shell Utilities
 
 \`alias\`, \`bash\`, \`chmod\`, \`clear\`, \`date\`, \`expr\`, \`false\`, \`help\`, \`history\`, \`seq\`, \`sh\`, \`sleep\`, \`time\`, \`timeout\`, \`true\`, \`unalias\`, \`which\`, \`whoami\`
-
-### Network
-
-\`curl\`, \`html-to-markdown\` (require [network configuration](#network-access))
 
 All commands support \`--help\` for usage information.
 
@@ -142,9 +161,6 @@ const env = new Bash({
   env: { MY_VAR: "value" }, // Initial environment
   cwd: "/app", // Starting directory (default: /home/user)
   executionLimits: { maxCallDepth: 50 }, // See "Execution Protection"
-  python: true, // Enable python3/python commands
-  javascript: true, // Enable js-exec command
-  // Or with bootstrap: javascript: { bootstrap: "globalThis.X = 1;" }
 });
 
 // Per-exec overrides
@@ -167,6 +183,17 @@ await env.exec("while true; do sleep 1; done", { signal: controller.signal });
 // Preserve leading whitespace (e.g., for heredocs)
 await env.exec("cat <<EOF\\n  indented\\nEOF", { rawScript: true });
 \`\`\`
+
+### Timezone
+
+\`date\` defaults to UTC (\`%Z=UTC\`, \`%z=+0000\`) regardless of the host clock, so the sandbox does not leak the host timezone. To opt into a specific zone, pass \`TZ\` as an initial env var:
+
+\`\`\`typescript
+const bash = new Bash({ env: { TZ: "America/New_York" } });
+await bash.exec("date"); // Mon Jun  1 09:30:00 EDT 2026
+\`\`\`
+
+\`-u\` always forces UTC; an unset or invalid \`$TZ\` falls back to UTC. Setting \`TZ\` exposes that timezone to scripts running in the sandbox, so only pass a value you are comfortable revealing — forwarding the host's real \`$TZ\` (e.g. \`process.env.TZ\`) reintroduces the disclosure that the UTC default exists to prevent.
 
 \`exec()\` options:
 
@@ -205,12 +232,20 @@ const env = new Bash({
 import { Bash } from "just-bash";
 import { OverlayFs } from "just-bash/fs/overlay-fs";
 
-const overlay = new OverlayFs({ root: "/path/to/project" });
+const overlay = new OverlayFs({
+  root: "/path/to/project",
+  // Copy-on-write data is bounded independently from real-file reads.
+  maxMemoryBytes: 256 * 1024 * 1024,
+});
 const env = new Bash({ fs: overlay, cwd: overlay.getMountPoint() });
 
 await env.exec("cat package.json"); // reads from disk
 await env.exec('echo "modified" > package.json'); // stays in memory
 \`\`\`
+
+\`maxMemoryBytes\` defaults to 1 GiB and covers aggregate files retained in the
+copy-on-write layer, including append chunks. Set it to the deployment's memory
+budget when an \`OverlayFs\` is reused across executions.
 
 **ReadWriteFs** - Direct read-write access to a real directory. Use this if you want the agent to be able to write to your disk:
 
@@ -225,6 +260,53 @@ await env.exec('echo "hello" > file.txt'); // writes to real filesystem
 \`\`\`
 
 Keep \`ReadWriteFs\` pointed at a workspace directory, not at the installed \`just-bash\` package or any other trusted runtime code. Guest-writable roots should stay separate from trusted code.
+
+\`ReadWriteFs\` uses normal in-place filesystem operations for private regular
+files. For multiply-linked regular files, it isolates append and metadata
+changes by copying the file and replacing only the sandbox directory entry, so
+a host-created hard link cannot carry those changes beyond the configured root.
+Implicit copies are limited by \`maxCopyOnWriteSize\` (100 MB by default; set it
+to \`0\` to disable the limit). Overwrite does not need to copy existing content.
+Explicit \`cp\` copies can be limited with the opt-in \`maxCopySize\` option
+(unlimited by default). The portable copy path may materialize sparse-file
+holes, so embeddings that require a disk-allocation bound should configure
+\`maxCopySize\`.
+
+Shared-inode isolation has a few deliberate limitations:
+
+- Append, \`chmod\`, and \`utimes\` on a multiply-linked regular file require read
+  access to the file and write access to its parent directory. They fail with
+  \`EFBIG\` when the file exceeds \`maxCopyOnWriteSize\`.
+- Copies use \`O_NOATIME\` when the Node.js runtime exposes it and retry with
+  normal read semantics if the kernel returns \`EPERM\`. Runtimes and platforms
+  without \`O_NOATIME\` may update access-time metadata visible through another
+  hard link.
+- Do not mutate a \`ReadWriteFs\` root concurrently through direct host filesystem
+  APIs. Node.js does not expose the descriptor-relative operations needed to
+  make pathname validation atomic against an external actor. A concurrent host
+  append to a multiply-linked file may be lost when the isolated entry is
+  replaced.
+- Mutations in overlapping \`ReadWriteFs\` roots are serialized within the
+  process. Unrelated roots proceed independently. The queue is not cancellable
+  or bounded, so a large mutation can delay later operations in overlapping
+  roots even if the requesting script is subsequently aborted.
+- Content writes and appends to FIFOs, sockets, devices, and other special files
+  are rejected. This avoids indefinitely occupying an overlapping-root mutation
+  slot on a blocking special-file open. Metadata operations remain supported
+  for single-link special files; multiply-linked special files are rejected
+  because they cannot be isolated without changing their file type.
+- Private-file and single-link special-file metadata operations use pathname
+  APIs to preserve normal host permission semantics. They are not atomic
+  against a trusted host actor concurrently replacing that pathname with a
+  symlink. With \`allowSymlinks: false\`, symlinks present during normal path
+  validation are still rejected.
+- Copying a symlink preserves whether its guest target is absolute or relative.
+  Only symlinks whose resolved targets remain inside the root are copied.
+- Regular-file copies replace the destination entry to prevent writes through
+  hard links. Existing destinations must still be writable, and their parent
+  directory must be writable so the isolated entry can be committed. Thus a
+  writable destination in a non-writable directory cannot be copied over.
+  Copying over a FIFO, socket, device, or other special entry is rejected.
 
 **MountableFs** - Mount multiple filesystems at different paths. Combines read-only and read-write filesystems into a unified namespace:
 
@@ -263,193 +345,6 @@ const fs = new MountableFs({
   ],
 });
 \`\`\`
-
-## Optional Capabilities
-
-### Network Access
-
-Network access is disabled by default. Enable it with the \`network\` option:
-
-\`\`\`typescript
-// Allow specific URLs with GET/HEAD only (safest)
-const env = new Bash({
-  network: {
-    allowedUrlPrefixes: [
-      "https://api.github.com/repos/myorg/",
-      "https://api.example.com",
-    ],
-  },
-});
-
-// Allow specific URLs with additional methods
-const env = new Bash({
-  network: {
-    allowedUrlPrefixes: ["https://api.example.com"],
-    allowedMethods: ["GET", "HEAD", "POST"], // Default: ["GET", "HEAD"]
-  },
-});
-
-// Inject credentials via header transforms (secrets never enter the sandbox)
-const env = new Bash({
-  network: {
-    allowedUrlPrefixes: [
-      "https://public-api.com", // plain string — no transforms
-      {
-        url: "https://ai-gateway.vercel.sh",
-        transform: [{ headers: { Authorization: "Bearer secret" } }],
-      },
-    ],
-  },
-});
-
-// Allow all URLs and methods (use with caution)
-const env = new Bash({
-  network: { dangerouslyAllowFullInternetAccess: true },
-});
-\`\`\`
-
-**Note:** The \`curl\` command only exists when network is configured. Without network configuration, \`curl\` returns "command not found".
-
-#### Allow-List Security
-
-The allow-list enforces:
-
-- **Origin matching**: URLs must match the exact origin (scheme + host + port)
-- **Path prefix**: Only paths starting with the specified prefix are allowed
-- **HTTP method restrictions**: Only GET and HEAD by default (configure \`allowedMethods\` for more)
-- **Redirect protection**: Redirects to non-allowed URLs are blocked
-- **Header transforms**: Firewall headers are injected at the fetch boundary and override any user-supplied headers with the same name, preventing credential substitution from inside the sandbox. Headers are re-evaluated on each redirect so credentials are never leaked to non-transform hosts
-
-#### Using curl
-
-\`\`\`bash
-# Fetch and process data
-curl -s https://api.example.com/data | grep pattern
-
-# Download and convert HTML to Markdown
-curl -s https://example.com | html-to-markdown
-
-# POST JSON data
-curl -X POST -H "Content-Type: application/json" \\
-  -d '{"key":"value"}' https://api.example.com/endpoint
-\`\`\`
-
-### JavaScript Support
-
-JavaScript and TypeScript execution via QuickJS is opt-in due to additional security surface. Enable with \`javascript: true\`:
-
-\`\`\`typescript
-const env = new Bash({
-  javascript: true,
-});
-
-// Execute JavaScript code
-await env.exec('js-exec -c "console.log(1 + 2)"');
-
-// Run script files (.js, .mjs, .ts, .mts)
-await env.exec('js-exec script.js');
-
-// ES module mode with imports
-await env.exec('js-exec -m -c "import fs from \\'fs\\'; console.log(fs.readFileSync(\\'/data/file.txt\\', \\'utf8\\'))"');
-\`\`\`
-
-#### Bootstrap Code
-
-Run setup code before every \`js-exec\` invocation with the \`bootstrap\` option:
-
-\`\`\`typescript
-const env = new Bash({
-  javascript: {
-    bootstrap: \`
-      globalThis.API_BASE = "https://api.example.com";
-      globalThis.formatDate = (d) => new Date(d).toISOString();
-    \`,
-  },
-});
-
-await env.exec('js-exec -c "console.log(API_BASE)"');
-// Output: https://api.example.com
-\`\`\`
-
-#### Node.js Compatibility
-
-\`js-exec\` supports \`require()\` and \`import\` with these Node.js modules:
-
-- **fs**: \`readFileSync\`, \`writeFileSync\`, \`readdirSync\`, \`statSync\`, \`existsSync\`, \`mkdirSync\`, \`rmSync\`, \`fs.promises.*\`
-- **path**: \`join\`, \`resolve\`, \`dirname\`, \`basename\`, \`extname\`, \`relative\`, \`normalize\`
-- **child_process**: \`execSync\`, \`spawnSync\`
-- **process**: \`argv\`, \`cwd()\`, \`exit()\`, \`env\`, \`platform\`, \`version\`
-- **Other modules**: \`os\`, \`url\`, \`assert\`, \`util\`, \`events\`, \`buffer\`, \`stream\`, \`string_decoder\`, \`querystring\`
-- **Globals**: \`console\`, \`fetch\`, \`Buffer\`, \`URL\`, \`URLSearchParams\`
-
-\`fs.readFileSync()\` returns a \`Buffer\` by default (matching Node.js). Pass an encoding like \`'utf8'\` to get a string.
-
-**Note:** The \`js-exec\` command only exists when \`javascript\` is configured. It is not available in browser environments. Execution runs in a QuickJS WASM sandbox with a 64 MB memory limit and configurable timeout (default: 10s, 60s with network).
-
-#### Tool Invocation Hook
-
-\`js-exec\` scripts can call host-defined tools through a global \`tools\` proxy
-when \`javascript.invokeTool\` is provided:
-
-\`\`\`typescript
-const bash = new Bash({
-  javascript: {
-    // path:     "math.add"  (dot-separated)
-    // argsJson: '{"a":1,"b":2}'  (or "" for no args)
-    // return:   JSON-stringified result, or "" for undefined
-    // throw:    propagates as a sandbox exception
-    invokeTool: async (path, argsJson) => {
-      const args = argsJson ? JSON.parse(argsJson) : {};
-      if (path === "math.add") {
-        return JSON.stringify({ sum: args.a + args.b });
-      }
-      throw new Error(\`Unknown tool: \${path}\`);
-    },
-  },
-});
-
-await bash.exec(\`js-exec -c 'console.log((await tools.math.add({a:3,b:4})).sum)'\`);
-\`\`\`
-
-The hook is generic — wire any tool framework through it (raw maps, MCP,
-Anthropic tool-use, etc.). For full GraphQL / OpenAPI / MCP discovery via
-\`@executor-js/sdk\`, plus auto-generated bash namespace commands, use the
-companion package
-[**\`@just-bash/executor\`**](../just-bash-executor/README.md).
-
-### Python Support
-
-Python (CPython compiled to WASM) is opt-in due to additional security surface. Enable with \`python: true\`:
-
-\`\`\`typescript
-const env = new Bash({
-  python: true,
-});
-
-// Execute Python code
-await env.exec('python3 -c "print(1 + 2)"');
-
-// Run Python scripts
-await env.exec('python3 script.py');
-\`\`\`
-
-**Note:** The \`python3\` and \`python\` commands only exist when \`python: true\` is configured. Python is not available in browser environments.
-
-### SQLite Support
-
-\`sqlite3\` uses sql.js (SQLite compiled to WASM), sandboxed from the real filesystem:
-
-\`\`\`typescript
-const env = new Bash();
-
-// Query in-memory database
-await env.exec('sqlite3 :memory: "SELECT 1 + 1"');
-
-// Query file-based database
-await env.exec('sqlite3 data.db "SELECT * FROM users"');
-\`\`\`
-
-**Note:** SQLite is not available in browser environments. Queries run in a worker thread with a configurable timeout (default: 5 seconds) to prevent runaway queries from blocking execution.
 
 ## AST Transform Plugins
 
@@ -575,42 +470,63 @@ Options:
 pnpm shell
 \`\`\`
 
-The interactive shell has full internet access by default. Disable with \`--no-network\`:
-
-\`\`\`bash
-pnpm shell --no-network
-\`\`\`
-
 ## Execution Protection
 
 Bash protects against infinite loops and deep recursion with configurable limits:
 
 \`\`\`typescript
 const env = new Bash({
+  // \`normal\` is the liberal, compatibility-oriented default. Use \`hardened\`
+  // for tighter untrusted-workload policy, then override individual resources.
+  executionLimitProfile: "hardened",
   executionLimits: {
     maxCallDepth: 100, // Max function recursion depth
-    maxCommandCount: 10000, // Max total commands executed
-    maxLoopIterations: 10000, // Max iterations per loop
-    maxAwkIterations: 10000, // Max iterations in awk programs
-    maxSedIterations: 10000, // Max iterations in sed scripts
+    maxCommandCount: 20000, // Shared across nested execution
+    maxSourceBytes: 8 * 1024 * 1024, // Shell source before parsing
+    maxFileSystemBytes: 256 * 1024 * 1024, // Retained default-FS data
+    maxOutputSize: 32 * 1024 * 1024, // Aggregate stdout + stderr bytes
+    maxArchiveBytes: 256 * 1024 * 1024, // Expanded archive bytes
+    maxExecutionTimeMs: 30_000, // Whole execution wall-clock deadline
+    maxExtensionCleanupTimeMs: 25, // Cancellation acknowledgement grace
   },
 });
 \`\`\`
 
-All limits have defaults. Error messages tell you which limit was hit. Increase as needed for your workload.
+All resources remain bounded by default in both profiles. Explicit values
+override the selected profile; non-negative safe integers and the legacy
+\`Infinity\` spelling are accepted. Infinite deadlines omit the corresponding
+platform timer rather than overflowing it. Invalid values are rejected when
+\`Bash\` is constructed. Error messages identify the resource that was hit.
 
 ## Security Model
 
+The Node.js package requires Node \`>=20.19\`.
+
 - The shell only has access to the provided filesystem.
 - All execution happens without VM isolation. This does introduce additional risk. The code base was designed to be robust against prototype-pollution attacks and other break outs to the host JS engine and filesystem.
-- There is no network access by default. When enabled, requests are checked against URL prefix allow-lists and HTTP-method allow-lists.
-- Python and JavaScript execution are off by default as they represent additional security surface.
 - Execution is protected against infinite loops and deep recursion with configurable limits.
+- Host-realm defense-in-depth uses the strongest scoped controls available on
+  each supported Node runtime. Where \`node:module.registerHooks()\` is present,
+  builtin ESM imports can also be denied only for the untrusted async context;
+  older runtimes retain best-effort scoped protection without failing existing
+  applications. It never installs a process-global deny-all loader. Query the
+  resolved capabilities with \`DefenseInDepthBox.getInstance().getStatus()\`.
+  Audit mode reports \`level: "none"\` because it records violations without
+  enforcing them.
+- Scoped defense uses reversible proxies for \`Reflect\`, \`JSON\`, and \`Math\` and
+  restores their host descriptors on deactivation. This is reported as
+  \`intrinsicProtection: "scoped-best-effort"\`: same-realm JavaScript that
+  cached an intrinsic or a mutation function before activation cannot be fully
+  revoked (including the direct \`delete\` operator). The separately named
+  \`processLifetimeIntrinsicHardening: true\` option permanently freezes those
+  objects and locks selected well-known Symbol descriptors; use it only in a
+  disposable or process-lifetime realm. Use an isolated worker/process when
+  complete protection and reversible host state are both required.
 - Use [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) if you need a full VM with arbitrary binary execution.
 
 ## Browser Support
 
-The core shell (parsing, execution, filesystem, and all built-in commands) works in browser environments. The following features require Node.js and are unavailable in browsers: \`python3\`/\`python\`, \`sqlite3\`, \`js-exec\`, and \`OverlayFs\`/\`ReadWriteFs\` (which access the real filesystem).
+The core shell, in-memory filesystem, and most built-in commands work in browser environments. \`tar\`, \`gzip\`, \`gunzip\`, \`zcat\`, \`OverlayFs\`, and \`ReadWriteFs\` require Node.js.
 
 ## Default Layout
 
@@ -841,7 +757,7 @@ limitations under the License.
 
 export const FILE_PACKAGE_JSON = `{
   "name": "just-bash",
-  "version": "2.14.3",
+  "version": "3.4.2",
   "description": "A simulated bash environment with virtual filesystem",
   "repository": {
     "type": "git",
@@ -921,21 +837,21 @@ const result = await bash.exec("cat input.txt | grep pattern");
 
 2. **No real filesystem**: By default, commands only see the virtual filesystem. Use \`OverlayFs\` to read from a real directory (writes stay in memory).
 
-3. **No network by default**: \`curl\` doesn't exist unless you configure \`network\` options with URL allowlists.
+3. **No binaries/WASM**: Only built-in commands work. You cannot run node, python, or other binaries.
 
-4. **No binaries/WASM**: Only built-in commands work. You cannot run node, python, or other binaries.
+4. **ReadWriteFs root separation**: If you use \`ReadWriteFs\`, point it at a workspace directory, not at the installed \`just-bash\` package or other trusted runtime code.
 
-5. **ReadWriteFs root separation**: If you use \`ReadWriteFs\`, point it at a workspace directory, not at the installed \`just-bash\` package or other trusted runtime code.
+5. **UTC by default**: \`date\` always shows UTC (\`%Z=UTC\`, \`%z=+0000\`) unless the host opts in by passing \`TZ\` as an env var (e.g. \`new Bash({ env: { TZ: "America/New_York" } })\`). \`-u\` always forces UTC; an invalid \`$TZ\` falls back to UTC.
 
 ## Available Commands
 
 **Text processing**: \`awk\`, \`cat\`, \`column\`, \`comm\`, \`cut\`, \`egrep\`, \`expand\`, \`fgrep\`, \`fold\`, \`grep\`, \`head\`, \`join\`, \`nl\`, \`paste\`, \`rev\`, \`rg\`, \`sed\`, \`sort\`, \`strings\`, \`tac\`, \`tail\`, \`tr\`, \`unexpand\`, \`uniq\`, \`wc\`, \`xargs\`
 
-**Data processing**: \`jq\` (JSON), \`js-exec\` (JavaScript/TypeScript via QuickJS), \`python3\`/\`python\` (Python via WASM/CPython), \`sqlite3\` (SQLite), \`xan\` (CSV), \`yq\` (YAML/XML/TOML/CSV)
+**Data processing**: \`jq\` (JSON)
 
 **File operations**: \`basename\`, \`chmod\`, \`cp\`, \`dirname\`, \`du\`, \`file\`, \`find\`, \`ln\`, \`ls\`, \`mkdir\`, \`mv\`, \`od\`, \`pwd\`, \`readlink\`, \`rm\`, \`rmdir\`, \`split\`, \`stat\`, \`touch\`, \`tree\`
 
-**Utilities**: \`alias\`, \`base64\`, \`bash\`, \`clear\`, \`curl\`, \`date\`, \`diff\`, \`echo\`, \`env\`, \`expr\`, \`false\`, \`gzip\`, \`gunzip\`, \`help\`, \`history\`, \`hostname\`, \`html-to-markdown\`, \`md5sum\`, \`printenv\`, \`printf\`, \`seq\`, \`sh\`, \`sha1sum\`, \`sha256sum\`, \`sleep\`, \`tar\`, \`tee\`, \`time\`, \`timeout\`, \`true\`, \`unalias\`, \`which\`, \`whoami\`, \`zcat\`
+**Utilities**: \`alias\`, \`base64\`, \`bash\`, \`clear\`, \`date\`, \`diff\`, \`echo\`, \`env\`, \`expr\`, \`false\`, \`gzip\`, \`gunzip\`, \`help\`, \`history\`, \`hostname\`, \`md5sum\`, \`printenv\`, \`printf\`, \`seq\`, \`sh\`, \`sha1sum\`, \`sha256sum\`, \`sleep\`, \`tar\`, \`tee\`, \`time\`, \`timeout\`, \`true\`, \`unalias\`, \`which\`, \`whoami\`, \`zcat\`
 
 All commands support \`--help\` for usage details.
 
@@ -955,116 +871,6 @@ jq '[.items[] | {id, name}]' data.json
 
 # From stdin
 echo '{"x":1}' | jq '.x'
-\`\`\`
-
-### YAML - \`yq\`
-
-\`\`\`bash
-# Extract value
-yq '.config.database.host' config.yaml
-
-# Output as JSON
-yq -o json '.' config.yaml
-
-# Filter with jq syntax
-yq '.users[] | select(.role == "admin")' users.yaml
-
-# Modify file in-place
-yq -i '.version = "2.0"' config.yaml
-\`\`\`
-
-### TOML - \`yq\`
-
-\`\`\`bash
-# Read TOML (auto-detected from .toml extension)
-yq '.package.name' Cargo.toml
-yq '.tool.poetry.version' pyproject.toml
-
-# Convert TOML to JSON
-yq -o json '.' config.toml
-
-# Convert YAML to TOML
-yq -o toml '.' config.yaml
-\`\`\`
-
-### CSV/TSV - \`yq -p csv\`
-
-\`\`\`bash
-# Read CSV (auto-detects from .csv/.tsv extension)
-yq '.[0].name' data.csv
-yq '.[0].name' data.tsv
-
-# Filter rows
-yq '[.[] | select(.status == "active")]' data.csv
-
-# Convert CSV to JSON
-yq -o json '.' data.csv
-\`\`\`
-
-### Front-matter - \`yq --front-matter\`
-
-\`\`\`bash
-# Extract YAML front-matter from markdown
-yq --front-matter '.title' post.md
-yq -f '.tags[]' blog-post.md
-
-# Works with TOML front-matter (+++) too
-yq -f '.date' hugo-post.md
-\`\`\`
-
-### XML - \`yq -p xml\`
-
-\`\`\`bash
-# Extract element
-yq '.root.users.user[0].name' data.xml
-
-# Access attributes (use +@ prefix)
-yq '.root.item["+@id"]' data.xml
-
-# Convert XML to JSON
-yq -p xml -o json '.' data.xml
-\`\`\`
-
-### INI - \`yq -p ini\`
-
-\`\`\`bash
-# Read INI section value
-yq '.database.host' config.ini
-
-# Convert INI to JSON
-yq -p ini -o json '.' config.ini
-\`\`\`
-
-### HTML - \`html-to-markdown\`
-
-\`\`\`bash
-# Convert HTML to markdown
-html-to-markdown page.html
-
-# From stdin
-echo '<h1>Title</h1><p>Text</p>' | html-to-markdown
-\`\`\`
-
-### Format Conversion with yq
-
-\`\`\`bash
-# JSON to YAML
-yq -p json '.' data.json
-
-# YAML to JSON
-yq -o json '.' data.yaml
-
-# YAML to TOML
-yq -o toml '.' config.yaml
-
-# TOML to JSON
-yq -o json '.' Cargo.toml
-
-# CSV to JSON
-yq -p csv -o json '.' data.csv
-
-# XML to YAML
-yq -p xml '.' data.xml
 \`\`\`
 
 ## Common Patterns
@@ -1132,7 +938,6 @@ Common exit codes:
 ## Security Model
 
 - Virtual filesystem is isolated from the real system
-- Network access requires explicit URL allowlists
 - Execution limits prevent infinite loops and resource exhaustion
 - No shell injection possible (commands are parsed, not eval'd)
 
@@ -1162,8 +967,6 @@ const bash = new Bash({
 
 **File read size limits**: \`OverlayFs\` and \`ReadWriteFs\` default to a 10MB max file read size. Override with \`maxFileReadSize\` in filesystem options (set to \`0\` to disable).
 
-**Network response size**: \`maxResponseSize\` in \`NetworkConfig\` caps HTTP response bodies (default: 10MB).
-
 ## Discovering Types
 
 TypeScript types are available in the \`.d.ts\` files. Use JSDoc-style exploration to understand the API:
@@ -1186,11 +989,64 @@ Key types to explore:
 - \`BashOptions\` - Constructor options for \`new Bash()\`
 - \`ExecResult\` - Return type of \`bash.exec()\`
 - \`InitialFiles\` - File specification format
+
+## Bundling just-bash
+
+just-bash ships pre-bundled (\`dist/bundle/index.js\`, \`index.cjs\`), but a handful
+of dependencies are deliberately left **external** — the bundle imports them by
+name instead of inlining them. Under plain Node this is invisible: they are
+declared dependencies, so the package manager installs them and the imports
+resolve at runtime.
+
+It matters when you run just-bash through **another** bundler (Next.js,
+webpack, esbuild, rollup) for a serverless or edge target. That bundler will try
+to inline these, and some of them cannot be inlined. Mark these three as external:
+
+| Package | What it is |
+| --- | --- |
+| \`@mongodb-js/zstd\` | native binding (\`optionalDependencies\`) |
+| \`node-liblzma\` | native binding (\`optionalDependencies\`) |
+| \`seek-bzip\` | CommonJS-only bzip2 decoder |
+
+Next.js 15+:
+
+\`\`\`ts
+// next.config.ts
+const nextConfig = {
+  serverExternalPackages: [
+    "just-bash",
+    "@mongodb-js/zstd",
+    "node-liblzma",
+    "seek-bzip",
+  ],
+};
+\`\`\`
+
+Older Next.js uses \`experimental.serverComponentsExternalPackages\`. webpack:
+add them to \`externals\` (or use \`webpack-node-externals\`). esbuild/rollup:
+\`--external:<name>\` / \`external: [...]\`.
+
+**Node version**: just-bash requires Node \`>=20.19\`.
+
+**Optional dependencies**: \`@mongodb-js/zstd\` and \`node-liblzma\` are declared
+in \`optionalDependencies\`, so an install that cannot build them still succeeds.
+Only the compression they provide is lost: \`tar -J\` then exits non-zero with
+\`xz compression requires node-liblzma which failed to load\`, rather than
+crashing the interpreter. \`seek-bzip\` is a regular dependency and is required.
 `;
 
 export const FILE_WTF_IS_THIS = `# just-bash website at https://justbash.dev/
 
 This is an interactive demo of **just-bash** running entirely in your browser, with an AI agent that can explore the source code.
+
+The paid-model \`/api/agent\` route is disabled by default in production. Set
+\`JUST_BASH_AGENT_API_TOKEN\` and have an authenticated same-origin gateway add
+\`Authorization: Bearer <token>\` to enable it. Never embed this server token in
+browser JavaScript. The route also bounds request history, output tokens,
+agent steps, retries, body-read and execution time, per-instance concurrency,
+and admission rate. Production deployments should also add distributed provider/edge
+per-principal rate and spend limits; an instance-local counter is not a global
+quota in a horizontally scaled deployment.
 
 ## Architecture
 
