@@ -1,10 +1,12 @@
 packages:
   - packages/*
-  - examples/*
 
 engineStrict: true
 minimumReleaseAge: 10080
 blockExoticSubdeps: true
+
+overrides:
+  postcss@<8.5.10: ^8.5.10
 
 # Packages whose install scripts we allow to run. pnpm 10 blocks install
 # scripts by default; this is the explicit allowlist for build-time native

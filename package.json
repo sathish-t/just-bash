@@ -13,7 +13,6 @@
     "test:comparison": "pnpm --filter './packages/*' test:comparison",
     "test:comparison:record": "pnpm --filter './packages/*' test:comparison:record",
     "test:dist": "pnpm --filter './packages/*' test:dist",
-    "test:examples": "pnpm --filter cjs-consumer-example typecheck",
     "check:deepsec-revalidation": "node scripts/check-deepsec-revalidation.mjs",
     "shell": "pnpm --filter just-bash shell",
     "dev:exec": "pnpm --filter just-bash dev:exec",
@@ -25,11 +24,6 @@
     "@biomejs/biome": "2.3.10",
     "@changesets/changelog-github": "^0.6.0",
     "@changesets/cli": "^2.31.1"
-  },
-  "pnpm": {
-    "overrides": {
-      "postcss@<8.5.10": "^8.5.10"
-    }
   },
   "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
 }

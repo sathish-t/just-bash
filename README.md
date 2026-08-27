@@ -1,6 +1,6 @@
 # just-bash monorepo
 
-This repository hosts the [`just-bash`](./packages/just-bash) package and its examples.
+This repository hosts the [`just-bash`](./packages/just-bash) package.
 
 ## Packages
 
@@ -14,7 +14,6 @@ See the package's own [README](./packages/just-bash/README.md) for usage documen
 
 ```
 packages/         publishable npm packages
-examples/         example consumers (bash-agent, cjs-consumer, website)
 .github/          CI workflows
 ```
 
