@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+step() {
+  local label="$1"
+  shift
+  local started=$SECONDS
+  printf '==> %s\n' "$label"
+  "$@"
+  printf '    completed in %ss\n' "$((SECONDS - started))"
+}
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is required but is not installed." >&2
+  exit 1
+fi
+
+node -e '
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < 20 || (major === 20 && minor < 19)) {
+    console.error(`Node.js >=20.19 is required; found ${process.version}.`);
+    process.exit(1);
+  }
+'
+
+package_manager="$(node -p 'require("./package.json").packageManager')"
+pnpm_spec="${package_manager%%+*}"
+pnpm_version="${pnpm_spec#pnpm@}"
+
+if ! command -v pnpm >/dev/null 2>&1 ||
+  [[ "$(pnpm --version)" != "$pnpm_version" ]]; then
+  if command -v corepack >/dev/null 2>&1; then
+    step "Installing $pnpm_spec" corepack install --global "$pnpm_spec"
+    corepack enable pnpm
+  elif command -v npm >/dev/null 2>&1; then
+    step "Installing $pnpm_spec" npm install --global "$pnpm_spec"
+  else
+    echo "Corepack or npm is required to install $pnpm_spec." >&2
+    exit 1
+  fi
+fi
+
+if ! dpkg-query -W -f='${Status}' liblzma-dev 2>/dev/null |
+  grep -Fqx 'install ok installed'; then
+  if ((EUID == 0)); then
+    step "Updating apt metadata" apt-get update
+    step "Installing liblzma-dev" env DEBIAN_FRONTEND=noninteractive \
+      apt-get install -y liblzma-dev
+  else
+    step "Updating apt metadata" sudo -n apt-get update
+    step "Installing liblzma-dev" sudo -n env DEBIAN_FRONTEND=noninteractive \
+      apt-get install -y liblzma-dev
+  fi
+fi
+
+step "Installing workspace dependencies" \
+  pnpm install --frozen-lockfile --prefer-offline

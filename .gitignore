@@ -19,3 +19,4 @@ fuzz-*.log
 .claude/settings.local.json
 .deepsec/
 plans/
+.amp/portals/*
