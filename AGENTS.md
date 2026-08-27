@@ -1,10 +1,13 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for coding agents working in this repository.
 
 ## Project Overview
 
 just-bash is a TypeScript implementation of a bash interpreter with an in-memory virtual filesystem. Designed for AI agents needing a secure, sandboxed bash environment. No WASM dependencies allowed.
+
+The implementation lives in `packages/just-bash`. Unless stated otherwise,
+`src/` and `dist/` paths below are relative to that package.
 
 ## Commands
 
@@ -13,6 +16,7 @@ just-bash is a TypeScript implementation of a bash interpreter with an in-memory
 pnpm build                 # Build TypeScript (required before using dist/)
 pnpm typecheck             # Type check
 pnpm lint:fix              # Fix lint errors (biome)
+pnpm lint                  # Check workflows, formatting, and banned patterns
 pnpm knip                  # Check for unused exports/dependencies
 
 # Testing
@@ -21,24 +25,23 @@ pnpm test:unit             # Run unit tests only (fast, no comparison/spec)
 pnpm test:comparison       # Run comparison tests only (uses fixtures)
 pnpm test:comparison:record # Re-record comparison test fixtures
 
-# Excluding spec tests (spec tests have known failures)
-pnpm test:run --exclude src/spec-tests
+# Exclude spec suites for a faster targeted run
+pnpm test:run --exclude 'src/spec-tests/**'
 
 # Run specific test file
 pnpm test:run src/commands/grep/grep.basic.test.ts
 
 # Run specific spec test file by name pattern
-pnpm test:run src/spec-tests/spec.test.ts -t "arith.test.sh"
-pnpm test:run src/spec-tests/spec.test.ts -t "array-basic.test.sh"
+pnpm test:run src/spec-tests/bash/spec.test.ts -t "arith.test.sh"
+pnpm test:run src/spec-tests/bash/spec.test.ts -t "array-basic.test.sh"
 
 # Interactive shell
-pnpm shell                 # Full network access
-pnpm shell --no-network    # No network
+pnpm shell
 
 # Sandboxed CLI (read-only by default)
-node ./dist/cli/just-bash.js -c 'ls -la' --root .
-node ./dist/cli/just-bash.js -c 'cat package.json' --root .
-node ./dist/cli/just-bash.js -c 'grep -r "TODO" src/' --root .
+node ./packages/just-bash/dist/bin/just-bash.js -c 'ls -la' --root .
+node ./packages/just-bash/dist/bin/just-bash.js -c 'cat package.json' --root .
+node ./packages/just-bash/dist/bin/just-bash.js -c 'grep -r "TODO" packages/just-bash/src/' --root .
 ```
 
 ### Sandboxed Shell Execution with `just-bash`
@@ -47,19 +50,19 @@ The `just-bash` CLI provides a secure, sandboxed bash environment using OverlayF
 
 ```bash
 # Execute inline script (read-only by default)
-node ./dist/cli/just-bash.js -c 'ls -la && cat README.md | head -5' --root .
+node ./packages/just-bash/dist/bin/just-bash.js -c 'ls -la && cat README.md | head -5' --root .
 
 # Execute with JSON output
-node ./dist/cli/just-bash.js -c 'echo hello' --root . --json
+node ./packages/just-bash/dist/bin/just-bash.js -c 'echo hello' --root . --json
 
 # Allow writes (writes stay in memory, don't affect real filesystem)
-node ./dist/cli/just-bash.js -c 'echo test > /tmp/file.txt && cat /tmp/file.txt' --root . --allow-write
+node ./packages/just-bash/dist/bin/just-bash.js -c 'echo test > /tmp/file.txt && cat /tmp/file.txt' --root . --allow-write
 
 # Execute script file
-node ./dist/cli/just-bash.js script.sh --root .
+node ./packages/just-bash/dist/bin/just-bash.js script.sh --root .
 
 # Exit on first error
-node ./dist/cli/just-bash.js -e -c 'false; echo "not reached"' --root .
+node ./packages/just-bash/dist/bin/just-bash.js -e -c 'false; echo "not reached"' --root .
 ```
 
 Options:
@@ -121,20 +124,19 @@ Input Script → Parser (src/parser/) → AST (src/ast/) → Interpreter (src/in
 - Each command in its own directory with implementation + tests
 - Registry pattern via `registry.ts`
 
-**Filesystem** (`src/fs.ts`, `src/overlay-fs/`): In-memory VFS with optional overlay on real filesystem
+**Filesystem** (`src/fs/`): In-memory VFS with optional overlay on real filesystem
 
 - `real-fs-utils.ts` - Shared security helpers for real-FS-backed implementations
 - `OverlayFs` / `ReadWriteFs` - Both default to `allowSymlinks: false` (symlinks blocked)
-- Symlink policy is enforced at central gate functions (`resolveAndValidate`, `validateRealPath_`) so new methods get protection automatically
+- Symlink policy is enforced at central gate functions (`resolveAndValidate`, `resolveRealPath_`) so new methods get protection automatically
 - Pass `allowSymlinks: true` only when symlink support is explicitly needed
 
 **AWK** (`src/commands/awk/`): AWK text processing implementation
 
-- `parser.ts` - Parses AWK programs (BEGIN/END blocks, rules, user-defined functions)
-- `executor.ts` - Executes parsed AWK programs line by line
-- `expressions.ts` - Expression evaluation (arithmetic, string functions, comparisons)
-- Supports: field splitting, pattern matching, printf, gsub/sub/split, user-defined functions
-- Limitations: User-defined functions support single return expressions only (no multi-statement bodies or if/else)
+- `parser2.ts` - Parses AWK programs (BEGIN/END blocks, rules, user-defined functions)
+- `interpreter/` - Executes statements and evaluates expressions
+- Supports: field splitting, pattern matching, printf, gsub/sub/split, and
+  multi-statement, conditional, and recursive user-defined functions
 
 **SED** (`src/commands/sed/`): Stream editor implementation
 
@@ -156,7 +158,7 @@ Commands go in `src/commands/<name>/` with:
 
 - **Unit tests**: Fast, isolated tests for specific functionality
 - **Comparison tests**: Compare just-bash output against recorded bash fixtures (see `src/comparison-tests/README.md`)
-- **Spec tests** (`src/spec-tests/`): Bash specification conformance (may have known failures)
+- **Spec tests** (`src/spec-tests/`): Bash specification conformance; unsupported cases are skipped
 
 Prefer comparison tests when uncertain about bash behavior. Keep test files under 300 lines.
 
@@ -190,7 +192,10 @@ When adding comparison tests:
 - `lstat()` and `readlink()` still work on symlinks (they inspect without following)
 - `readdir()` lists symlink entries but operations through them fail
 
-**How it works**: Central gate functions (`resolveAndValidate` in ReadWriteFs, `validateRealPath_` in OverlayFs) compare `realPath.slice(root.length)` vs `canonical.slice(canonicalRoot.length)`. A mismatch means a symlink was traversed — zero extra I/O cost.
+**How it works**: Central gate functions (`resolveAndValidate` in ReadWriteFs,
+`resolveRealPath_` in OverlayFs) compare unresolved and canonical paths. A
+mismatch means a symlink was traversed; a leaf `lstat` also rejects broken
+symlinks.
 
 **TOCTOU protection**: `readFile`, `writeFile`, and `appendFile` in ReadWriteFs use `O_NOFOLLOW` (when `allowSymlinks: false`) to prevent symlink-swap attacks between validation and I/O. `writeFile`/`appendFile` also re-validate paths after `mkdir()` to catch parent-directory-swap attacks.
 
@@ -200,7 +205,7 @@ When adding comparison tests:
 
 ## Prototype Pollution Prevention
 
-All `Record<string, T>` objects must use null prototypes to prevent `__proto__` lookups from traversing the prototype chain. This is enforced by the banned-patterns linter (`pnpm lint:banned`).
+All `Record<string, T>` objects must use null prototypes to prevent `__proto__` lookups from traversing the prototype chain. This is enforced by the banned-pattern checker run by `pnpm lint`.
 
 **For static lookup tables**, use `nullPrototype()` from `src/commands/query-engine/safe-object.ts`:
 
@@ -237,9 +242,8 @@ Object.setPrototypeOf(MAP, null);
 
 ## Development Guidelines
 
-- Read AGENTS.md
 - Use `pnpm dev:exec` instead of ad-hoc test scripts (avoids approval prompts)
-- Always verify with `pnpm typecheck && pnpm lint:fix && pnpm knip && pnpm test:run` before finishing
+- Always verify with `pnpm typecheck && pnpm lint:fix && pnpm lint && pnpm knip && pnpm test:run` before finishing
 - Assert full stdout/stderr in tests, not partial matches
 - Implementation must match real bash behavior, not convenience
 - Dependencies using WASM are not allowed
