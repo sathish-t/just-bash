@@ -161,34 +161,6 @@ echo 한 | f`,
     });
   });
 
-  describe("custom commands", () => {
-    it("text-emitting custom command pipes correctly without setting flags", async () => {
-      const { defineCommand } = await import("./custom-commands.js");
-      const greet = defineCommand("greet", async () => ({
-        stdout: "안녕\n",
-        stderr: "",
-        exitCode: 0,
-      }));
-      const env = new Bash({ customCommands: [greet] });
-      const r = await env.exec("greet | wc -c");
-      // "안녕\n" = 7 UTF-8 bytes (3 + 3 + 1).
-      expect(r.stdout.trim()).toBe("7");
-    });
-
-    it("byte-emitting custom command pipes without double encoding", async () => {
-      const { bytesOutput, encodeUtf8ToBytes } = await import("./encoding.js");
-      const { defineCommand } = await import("./custom-commands.js");
-      const emitBytes = defineCommand("emit-bytes", async () => ({
-        ...bytesOutput(encodeUtf8ToBytes("안녕\n")),
-        stderr: "",
-        exitCode: 0,
-      }));
-      const env = new Bash({ customCommands: [emitBytes] });
-      const r = await env.exec("emit-bytes | wc -c");
-      expect(r.stdout.trim()).toBe("7");
-    });
-  });
-
   describe("Bash.exec({ stdin })", () => {
     it("text stdin (default) reaches byte consumers as UTF-8 bytes", async () => {
       const env = new Bash();
@@ -208,8 +180,8 @@ echo 한 | f`,
 
   describe("public encoding exports", () => {
     // The byte/text helpers are part of the package's public API.
-    // Custom-command authors and downstream tools import them by name;
-    // removing any of these names is a breaking change.
+    // Downstream tools import them by name, so removing any of these names is
+    // a breaking change.
     it("exports the canonical helpers from the package entry", async () => {
       const mod = (await import("./index.js")) as Record<string, unknown>;
       for (const name of [

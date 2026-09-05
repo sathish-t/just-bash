@@ -34,63 +34,6 @@ pnpm test:run src/commands/grep/grep.basic.test.ts
 # Run specific spec test file by name pattern
 pnpm test:run src/spec-tests/bash/spec.test.ts -t "arith.test.sh"
 pnpm test:run src/spec-tests/bash/spec.test.ts -t "array-basic.test.sh"
-
-# Interactive shell
-pnpm shell
-
-# Sandboxed CLI (read-only by default)
-node ./packages/just-bash/dist/bin/just-bash.js -c 'ls -la' --root .
-node ./packages/just-bash/dist/bin/just-bash.js -c 'cat package.json' --root .
-node ./packages/just-bash/dist/bin/just-bash.js -c 'grep -r "TODO" packages/just-bash/src/' --root .
-```
-
-### Sandboxed Shell Execution with `just-bash`
-
-The `just-bash` CLI provides a secure, sandboxed bash environment using OverlayFS:
-
-```bash
-# Execute inline script (read-only by default)
-node ./packages/just-bash/dist/bin/just-bash.js -c 'ls -la && cat README.md | head -5' --root .
-
-# Execute with JSON output
-node ./packages/just-bash/dist/bin/just-bash.js -c 'echo hello' --root . --json
-
-# Allow writes (writes stay in memory, don't affect real filesystem)
-node ./packages/just-bash/dist/bin/just-bash.js -c 'echo test > /tmp/file.txt && cat /tmp/file.txt' --root . --allow-write
-
-# Execute script file
-node ./packages/just-bash/dist/bin/just-bash.js script.sh --root .
-
-# Exit on first error
-node ./packages/just-bash/dist/bin/just-bash.js -e -c 'false; echo "not reached"' --root .
-```
-
-Options:
-- `--root <path>` - Root directory (default: current directory)
-- `--cwd <path>` - Working directory in sandbox (default: /home/user/project)
-- `--allow-write` - Enable write operations (writes stay in memory)
-- `--json` - Output as JSON (stdout, stderr, exitCode)
-- `-e, --errexit` - Exit on first error
-
-### Debug with `pnpm dev:exec`
-
-Reads script from stdin, executes it, shows output. Prefer this over ad-hoc test files.
-
-```bash
-# Basic execution
-echo 'echo hello' | pnpm dev:exec
-
-# Compare with real bash
-echo 'x=5; echo $((x + 3))' | pnpm dev:exec --real-bash
-
-# Show parsed AST
-echo 'for i in 1 2 3; do echo $i; done' | pnpm dev:exec --print-ast
-
-# Multi-line script
-echo 'arr=(a b c)
-for x in "${arr[@]}"; do
-  echo "item: $x"
-done' | pnpm dev:exec --real-bash
 ```
 
 ## Architecture
@@ -242,7 +185,6 @@ Object.setPrototypeOf(MAP, null);
 
 ## Development Guidelines
 
-- Use `pnpm dev:exec` instead of ad-hoc test scripts (avoids approval prompts)
 - Always verify with `pnpm typecheck && pnpm lint:fix && pnpm lint && pnpm knip && pnpm test:run` before finishing
 - Assert full stdout/stderr in tests, not partial matches
 - Implementation must match real bash behavior, not convenience

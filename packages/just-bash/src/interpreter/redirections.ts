@@ -1117,8 +1117,8 @@ export async function applyRedirections(
   //   - `stdoutKind: "bytes"` (or legacy `stdoutEncoding: "binary"` —
   //     cat, gzip, base64 -d, ...): stdout is already a latin1 byte
   //     buffer; write binary so the bytes round-trip verbatim.
-  //   - everything else (echo, printf, sed, jq, custom commands that
-  //     leave the field unset): stdout is JS Unicode text; write UTF-8.
+  //   - everything else (echo, printf, sed, jq, and other commands that leave
+  //     the field unset): stdout is JS Unicode text; write UTF-8.
   //
   // The default is text — never the content-sampling heuristic. The
   // sampler reads only the first 8 KiB and would mis-classify long

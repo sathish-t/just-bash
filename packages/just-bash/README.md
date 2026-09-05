@@ -22,59 +22,6 @@ console.log(result.exitCode); // 0
 
 Each `exec()` call gets its own isolated shell state — environment variables, functions, and working directory reset between calls. The **filesystem is shared** across calls, so files written in one `exec()` are visible in the next.
 
-## Custom Commands
-
-Extend just-bash with your own TypeScript commands using `defineCommand`:
-
-```typescript
-import { Bash, decodeBytesToUtf8, defineCommand } from "just-bash";
-
-const hello = defineCommand("hello", async (args, ctx) => {
-  const name = args[0] || "world";
-  return { stdout: `Hello, ${name}!\n`, stderr: "", exitCode: 0 };
-});
-
-const upper = defineCommand("upper", async (args, ctx) => {
-  // ctx.stdin is a ByteString — decode to text before string ops.
-  return {
-    stdout: decodeBytesToUtf8(ctx.stdin).toUpperCase(),
-    stderr: "",
-    exitCode: 0,
-  };
-});
-
-const bash = new Bash({ customCommands: [hello, upper] });
-
-await bash.exec("hello Alice"); // "Hello, Alice!\n"
-await bash.exec("echo 'test' | upper"); // "TEST\n"
-```
-
-Custom command callbacks receive a `ResolvedCommandContext` with `fs`, `cwd`,
-`env`, `stdin`, resolved `limits`, and `exec` (for subcommands), and work with
-pipes, redirections, and all shell features. The legacy `CommandContext` remains
-available for standalone context inputs; use `createCommandContext({ fs })` when
-calling a command directly with a fully resolved context.
-
-Host-provided commands preserve the legacy trusted default whether supplied to
-the `Bash` constructor, declared through `defineCommand`, loaded lazily, or
-added later with `bash.registerCommand()`. Set `trusted: false` (or use
-`defineCommand(name, execute, { trusted: false })`) to select the restricted
-extension boundary. Trusted commands run in the embedding process and should
-never execute guest-provided JavaScript.
-
-Every invocation is bound by `maxExecutionTimeMs`. On cancellation, just-bash
-revokes the command context immediately; `maxExtensionCleanupTimeMs` only
-bounds how long it waits for the now-authority-free command promise to settle.
-A late continuation cannot use `ctx.fs`, `ctx.env`, `ctx.exec`, or other context
-capabilities. Cleanup work that must run at scope closure can be registered with
-`ctx.executionScope.registerCleanup()`. A cleanup failure is returned as a
-generic exit-126 shell result rather than rejecting `Bash.exec()` or exposing
-host error details. JavaScript cannot forcibly stop arbitrary host code, so
-extensions requiring a hard guarantee against external side effects must run
-in a terminable worker or process. Tests that invoke command objects directly
-can use `createCommandContext({ fs })` to get a fully resolved context without
-duplicating internal defaults.
-
 <details>
 <summary><h2>Supported Commands</h2></summary>
 
@@ -365,79 +312,6 @@ const result = await generateText({
 
 See [bash-tool](https://github.com/vercel-labs/bash-tool) for more.
 
-### Vercel Sandbox Compatible API
-
-`Sandbox` is a drop-in replacement for [`@vercel/sandbox`](https://vercel.com/docs/vercel-sandbox) — same API, but runs entirely in-process with the virtual filesystem. Start with just-bash for development and testing, swap in a real sandbox when you need a full VM.
-
-```typescript
-import { Sandbox } from "just-bash";
-
-// Create a sandbox instance
-const sandbox = await Sandbox.create({ cwd: "/app" });
-
-// Write files to the virtual filesystem
-await sandbox.writeFiles({
-  "/app/script.sh": 'echo "Hello World"',
-  "/app/data.json": '{"key": "value"}',
-});
-
-// Run commands and get results
-const cmd = await sandbox.runCommand("bash /app/script.sh");
-const output = await cmd.stdout(); // "Hello World\n"
-const exitCode = (await cmd.wait()).exitCode; // 0
-
-// Read files back
-const content = await sandbox.readFile("/app/data.json");
-
-// Create directories
-await sandbox.mkDir("/app/logs", { recursive: true });
-
-// Clean up (no-op for Bash, but API-compatible)
-await sandbox.stop();
-```
-
-## CLI
-
-### CLI Binary
-
-Install globally (`npm install -g just-bash`) for a sandboxed CLI:
-
-```bash
-# Execute inline script
-just-bash -c 'ls -la && cat package.json | head -5'
-
-# Execute with specific project root
-just-bash -c 'grep -r "TODO" src/' --root /path/to/project
-
-# Pipe script from stdin
-echo 'find . -name "*.ts" | wc -l' | just-bash
-
-# Execute a script file
-just-bash ./scripts/deploy.sh
-
-# Get JSON output for programmatic use
-just-bash -c 'echo hello' --json
-# Output: {"stdout":"hello\n","stderr":"","exitCode":0}
-```
-
-The CLI uses OverlayFS — reads come from the real filesystem, but all writes stay in memory and are discarded after execution.
-
-**Important**: The project root is mounted at `/home/user/project`. Use this path (or relative paths from the default cwd) to access your files inside the sandbox.
-
-Options:
-
-- `-c <script>` - Execute script from argument
-- `--root <path>` - Root directory (default: current directory)
-- `--cwd <path>` - Working directory in sandbox
-- `-e, --errexit` - Exit on first error
-- `--json` - Output as JSON
-
-### Interactive Shell
-
-```bash
-pnpm shell
-```
-
 ## Execution Protection
 
 Bash protects against infinite loops and deep recursion with configurable limits:
@@ -455,7 +329,7 @@ const env = new Bash({
     maxOutputSize: 32 * 1024 * 1024, // Aggregate stdout + stderr bytes
     maxArchiveBytes: 256 * 1024 * 1024, // Expanded archive bytes
     maxExecutionTimeMs: 30_000, // Whole execution wall-clock deadline
-    maxExtensionCleanupTimeMs: 25, // Cancellation acknowledgement grace
+    maxCommandCleanupTimeMs: 25, // Cancellation acknowledgement grace
   },
 });
 ```
@@ -490,7 +364,6 @@ The Node.js package requires Node `>=20.19`.
   objects and locks selected well-known Symbol descriptors; use it only in a
   disposable or process-lifetime realm. Use an isolated worker/process when
   complete protection and reversible host state are both required.
-- Use [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) if you need a full VM with arbitrary binary execution.
 
 ## Browser Support
 

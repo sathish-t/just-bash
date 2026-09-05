@@ -14,7 +14,7 @@ import type { InterpreterContext } from "./types.js";
 
 /**
  * The descriptor table is stored as `Map<number, string>` because it is part
- * of the public CommandContext surface. These tests pin the encoding and the
+ * of RuntimeCommandContext. These tests pin the encoding and the
  * read/advance semantics every redirection site relies on.
  */
 function makeCtx(maxFileDescriptors = 64): InterpreterContext {

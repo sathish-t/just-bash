@@ -92,7 +92,7 @@ export interface ExecutionLimits {
    * Maximum time to let an aborted command acknowledge cancellation before its
    * execution context is revoked (normal default: 100ms).
    */
-  maxExtensionCleanupTimeMs?: number;
+  maxCommandCleanupTimeMs?: number;
 
   /** Maximum glob filesystem operations (normal default: 1000000) */
   maxGlobOperations?: number;
@@ -167,7 +167,7 @@ const DEFAULT_LIMITS: Required<ExecutionLimits> = {
   // Prior releases had no top-level deadline. Keep normal compatibility-safe
   // for long real workloads while retaining a finite defense-in-depth bound.
   maxExecutionTimeMs: 60 * 60 * 1000,
-  maxExtensionCleanupTimeMs: 100,
+  maxCommandCleanupTimeMs: 100,
   maxGlobOperations: 1000000,
   maxStringLength: 64 * 1024 * 1024,
   maxArrayElements: 1000000,
@@ -187,7 +187,7 @@ const HARDENED_LIMITS: Required<ExecutionLimits> = {
   maxAwkIterations: 10_000,
   maxSedIterations: 10_000,
   maxJqIterations: 10_000,
-  maxExtensionCleanupTimeMs: 25,
+  maxCommandCleanupTimeMs: 25,
   maxGlobOperations: 100_000,
   maxStringLength: 10 * 1024 * 1024,
   maxArrayElements: 100_000,
@@ -270,9 +270,8 @@ export function resolveLimits(
       userLimits.maxArchiveEntries ?? defaults.maxArchiveEntries,
     maxExecutionTimeMs:
       userLimits.maxExecutionTimeMs ?? defaults.maxExecutionTimeMs,
-    maxExtensionCleanupTimeMs:
-      userLimits.maxExtensionCleanupTimeMs ??
-      defaults.maxExtensionCleanupTimeMs,
+    maxCommandCleanupTimeMs:
+      userLimits.maxCommandCleanupTimeMs ?? defaults.maxCommandCleanupTimeMs,
     maxGlobOperations:
       userLimits.maxGlobOperations ?? defaults.maxGlobOperations,
     maxStringLength: userLimits.maxStringLength ?? defaults.maxStringLength,

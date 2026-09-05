@@ -146,12 +146,6 @@ function addImpliedImports(code: string): string {
   if (code.includes("Bash") && !code.includes('from "just-bash"')) {
     imports.push('import { Bash } from "just-bash";');
   }
-  if (code.includes("defineCommand") && !code.includes('from "just-bash"')) {
-    imports.push('import { defineCommand } from "just-bash";');
-  }
-  if (code.includes("Sandbox") && !code.includes('from "just-bash"')) {
-    imports.push('import { Sandbox } from "just-bash";');
-  }
   // bash-tool imports are handled via ephemeral type definitions
   if (
     code.includes("OverlayFs") &&

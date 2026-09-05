@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { Bash } from "../../Bash.js";
-import { defineCommand } from "../../custom-commands.js";
 import { resolveLimits } from "../../limits.js";
 
 describe("compatibility-safe execution limit configuration", () => {
@@ -87,27 +86,6 @@ describe("compatibility-safe execution limit configuration", () => {
         RangeError,
       );
     }
-  });
-
-  it("does not arm overflowing timers for infinite execution deadlines", async () => {
-    const bash = new Bash({
-      executionLimits: {
-        maxExecutionTimeMs: Number.POSITIVE_INFINITY,
-        maxExtensionCleanupTimeMs: Number.POSITIVE_INFINITY,
-      },
-      customCommands: [
-        defineCommand("infinite-wait", async () => {
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          return { stdout: "completed\n", stderr: "", exitCode: 0 };
-        }),
-      ],
-    });
-
-    expect(await bash.exec("infinite-wait")).toMatchObject({
-      stdout: "completed\n",
-      stderr: "",
-      exitCode: 0,
-    });
   });
 
   it("runs a bounded 10k+ operation workload under the normal profile", async () => {

@@ -2,9 +2,9 @@
  * File Descriptor Table
  *
  * One typed view over `ctx.state.fileDescriptors`, the shell's descriptor
- * table. The table itself stays a `Map<number, string>` because it is part
- * of the public `CommandContext` surface — extensions read fd values as
- * content — so this module owns the string encoding instead.
+ * table. The table itself stays a `Map<number, string>` because command
+ * implementations read descriptor values as content, so this module owns the
+ * string encoding instead.
  *
  * Entry kinds:
  * - `input`      readable content (`N< file`, `N<<EOF`, `N<<<word`). Reading

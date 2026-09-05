@@ -526,7 +526,7 @@ const BANNED_PATTERNS = [
     pattern: /\bctx\.limits\?\.\w+\s*\?\?\s*(?:\d|Number\.)/,
     filePattern: /src\/(?:commands|interpreter)\/.*\.ts$/,
     message:
-      "CommandContext.limits is fully resolved. Optional access plus a local literal\n" +
+      "RuntimeCommandContext.limits is fully resolved. Optional access plus a local literal\n" +
       "silently forks defaults from the central limit schema.",
     solutions: [
       "Read ctx.limits.<field> directly",
@@ -551,12 +551,12 @@ const BANNED_PATTERNS = [
     pattern:
       /(?:from\s*["'](?:node:fs(?:\/promises)?|fs\/promises)["']|require\s*\(\s*["'](?:node:fs(?:\/promises)?|fs\/promises)["']\s*\))/,
     filePattern:
-      /src\/(?!fs\/)(?!cli\/)(?!comparison-tests\/)(?!security\/fuzzing\/runners\/).*\.(?:ts|js)$/,
+      /src\/(?!fs\/)(?!comparison-tests\/)(?!security\/fuzzing\/runners\/).*\.(?:ts|js)$/,
     message:
-      "Raw host filesystem access is restricted to reviewed filesystem and CLI\n" +
-      "gates so virtual-path and error sanitization cannot be bypassed.",
+      "Raw host filesystem access is restricted to reviewed filesystem gates so\n" +
+      "virtual-path and error sanitization cannot be bypassed.",
     solutions: [
-      "Use CommandContext.fs for command I/O",
+      "Use RuntimeCommandContext.fs for command I/O",
       "Move unavoidable host access behind a reviewed filesystem gate",
     ],
   },

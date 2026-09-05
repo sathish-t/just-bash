@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { Bash } from "../../Bash.js";
-import { defineCommand } from "../../custom-commands.js";
 import { ExecutionOutputAccumulator } from "../../execution-output.js";
 import { ExecutionScope } from "../../execution-scope.js";
 import {
@@ -94,7 +93,7 @@ describe("shared nested execution scope", () => {
 
   it("bounds a cleanup callback that never acknowledges cancellation", async () => {
     const scope = new ExecutionScope(
-      resolveLimits({ maxExtensionCleanupTimeMs: 5 }),
+      resolveLimits({ maxCommandCleanupTimeMs: 5 }),
     );
     scope.registerCleanup(() => new Promise(() => {}));
     const started = Date.now();
@@ -155,60 +154,5 @@ describe("shared nested execution scope", () => {
       stderr: "",
       exitCode: 0,
     });
-  });
-
-  it("stops direct ctx.exec recursion before parsing another interpreter", async () => {
-    const recurse = defineCommand("recurse", async (_args, ctx) => {
-      if (!ctx.exec) throw new Error("exec unavailable");
-      return ctx.exec("recurse", { cwd: ctx.cwd, signal: ctx.signal });
-    });
-    const bash = new Bash({
-      customCommands: [recurse],
-      executionLimits: { maxCommandCount: 100, maxExecDepth: 3 },
-    });
-
-    const result = await bash.exec("recurse");
-
-    expect(result.exitCode).toBe(126);
-    expect(result.stderr).toContain("maximum nested execution depth (3)");
-  });
-
-  it("does not let timeout detach a host abort signal", async () => {
-    let childWasAborted = false;
-    let markStarted: () => void = () => {};
-    const started = new Promise<void>((resolve) => {
-      markStarted = resolve;
-    });
-    const waitForAbort = defineCommand("wait-for-abort", async (_args, ctx) => {
-      markStarted();
-      await new Promise<void>((resolve) => {
-        if (ctx.signal?.aborted) {
-          childWasAborted = true;
-          resolve();
-          return;
-        }
-        ctx.signal?.addEventListener(
-          "abort",
-          () => {
-            childWasAborted = true;
-            resolve();
-          },
-          { once: true },
-        );
-      });
-      return { stdout: "", stderr: "", exitCode: 0 };
-    });
-    const bash = new Bash({ customCommands: [waitForAbort] });
-    const controller = new AbortController();
-    const execution = bash.exec("timeout 60 wait-for-abort", {
-      signal: controller.signal,
-    });
-
-    await started;
-    controller.abort(new Error("host canceled"));
-    const result = await execution;
-
-    expect(childWasAborted).toBe(true);
-    expect(result.exitCode).toBe(124);
   });
 });

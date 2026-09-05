@@ -35,7 +35,6 @@ export default defineConfig({
         "src/**/*.comparison.test.ts",
         "src/spec-tests/**",
         "src/comparison-tests/**",
-        "src/cli/**",
         "src/agent-examples/**",
       ],
     },

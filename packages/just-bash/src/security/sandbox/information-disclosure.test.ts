@@ -70,12 +70,13 @@ describe("Information Disclosure Prevention", () => {
       expect(typeof result.exitCode).toBe("number");
     });
 
-    it("should not expose real username", async () => {
+    it("should return a virtual username", async () => {
       const result = await bash.exec(`
         whoami 2>&1 || echo "whoami handled"
       `);
-      // Should not return actual system username
-      expect(result.stdout).not.toContain(process.env.USER || "");
+      expect(result.stdout).toBe("sandbox\n");
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(0);
     });
 
     it("should handle uname command safely", async () => {
@@ -515,11 +516,6 @@ describe("Information Disclosure Prevention", () => {
     it("hostname should return localhost", async () => {
       const result = await bash.exec("hostname");
       expect(result.stdout.trim()).toBe("localhost");
-    });
-
-    it("whoami should return user", async () => {
-      const result = await bash.exec("whoami");
-      expect(result.stdout.trim()).toBe("user");
     });
   });
 

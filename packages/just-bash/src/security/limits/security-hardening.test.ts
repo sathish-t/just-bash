@@ -14,7 +14,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { Bash, defineCommand } from "../../index.js";
+import { Bash } from "../../index.js";
 import { buildIfsCharClassPattern } from "../../interpreter/helpers/ifs.js";
 import { resolveLimits } from "../../limits.js";
 import { parseArithNumber } from "../../parser/arithmetic-primaries.js";
@@ -667,29 +667,6 @@ describe("Security Hardening", () => {
       const result = await limitedBash.exec("cat", { stdin: "12345" });
       expect(result.exitCode).toBe(126);
       expect(result.stderr).toContain("stdin size limit exceeded (4 bytes)");
-    });
-
-    it("shares aggregate input accounting across nested executions", async () => {
-      const feedTwice = defineCommand("feed-twice", async (_args, ctx) => {
-        if (!ctx.exec) throw new Error("exec unavailable");
-        await ctx.exec("cat >/dev/null", {
-          cwd: ctx.cwd,
-          stdin: "12345",
-          stdinKind: "bytes",
-        });
-        return ctx.exec("cat >/dev/null", {
-          cwd: ctx.cwd,
-          stdin: "67890",
-          stdinKind: "bytes",
-        });
-      });
-      const limitedBash = new Bash({
-        customCommands: [feedTwice],
-        executionLimits: { maxInputBytes: 8, maxStringLength: 100 },
-      });
-      const result = await limitedBash.exec("feed-twice");
-      expect(result.exitCode).toBe(126);
-      expect(result.stderr).toContain("aggregate input size limit exceeded");
     });
 
     it("does not charge exact inherited bash stdin twice", async () => {

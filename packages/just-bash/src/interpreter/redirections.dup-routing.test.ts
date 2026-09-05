@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { Bash } from "../Bash.js";
-import { defineCommand } from "../custom-commands.js";
 
 /**
  * `applyRedirections` processes a command's redirection list sequentially, so a
@@ -22,53 +21,6 @@ describe("fd duplication after redirection (> file 2>&1)", () => {
     expect(result.exitCode).toBe(127);
     const f = await env.exec("cat /tmp/f");
     expect(f.stdout).toBe("bash: nosuchcmd: command not found\n");
-  });
-
-  it("sends a custom command's stderr to the file", async () => {
-    const fail403 = defineCommand("vercel", async () => ({
-      stdout: "",
-      stderr: "Error! Forbidden (403)\n",
-      exitCode: 1,
-    }));
-    const env = new Bash({ customCommands: [fail403] });
-    const result = await env.exec("vercel flags > /tmp/f 2>&1");
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("");
-    expect(result.exitCode).toBe(1);
-    const f = await env.exec("cat /tmp/f");
-    expect(f.stdout).toBe("Error! Forbidden (403)\n");
-  });
-
-  it("shares the write position between duplicated read-write descriptors", async () => {
-    const both = defineCommand("both", async () => ({
-      stdout: "out",
-      stderr: "err",
-      exitCode: 0,
-    }));
-    const env = new Bash({ customCommands: [both] });
-    const result = await env.exec(
-      "exec 3<>/tmp/f; exec 4>&3; both 1>&3 2>&4; cat /tmp/f",
-    );
-
-    expect(result.stdout).toBe("outerr");
-    expect(result.stderr).toBe("");
-    expect(result.exitCode).toBe(0);
-  });
-
-  it("keeps a wrapper script's stdout clean (runner-payload shape)", async () => {
-    const fail = defineCommand("failing-tool", async () => ({
-      stdout: "",
-      stderr: "tool error\n",
-      exitCode: 1,
-    }));
-    const env = new Bash({ customCommands: [fail] });
-    const result = await env.exec(
-      'CMD="failing-tool"; eval "$CMD" > /tmp/out 2>&1; echo \'{"ok":true}\'',
-    );
-    expect(result.stdout).toBe('{"ok":true}\n');
-    expect(result.stderr).toBe("");
-    const f = await env.exec("cat /tmp/out");
-    expect(f.stdout).toBe("tool error\n");
   });
 
   it("interleaves group stdout and stderr into the file", async () => {

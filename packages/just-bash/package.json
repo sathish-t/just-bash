@@ -35,7 +35,6 @@
   },
   "files": [
     "dist/bundle/",
-    "dist/bin/",
     "dist/*.d.ts",
     "dist/*.d.cts",
     "dist/ast/*.d.ts",
@@ -43,7 +42,6 @@
     "dist/fs/**/*.d.ts",
     "dist/interpreter/**/*.d.ts",
     "dist/parser/*.d.ts",
-    "dist/sandbox/*.d.ts",
     "dist/security/*.d.ts",
     "dist/transform/**/*.d.ts",
     "dist/utils/*.d.ts",
@@ -51,21 +49,15 @@
     "CHANGELOG.md",
     "dist/AGENTS.md"
   ],
-  "bin": {
-    "just-bash": "./dist/bin/just-bash.js",
-    "just-bash-shell": "./dist/bin/shell/shell.js"
-  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc && pnpm build:lib && pnpm build:lib:cjs && pnpm build:browser && pnpm build:cli && pnpm build:shell && pnpm build:clean && cp dist/index.d.ts dist/index.d.cts && sed '1,/^-->/d' AGENTS.npm.md > dist/AGENTS.md",
+    "build": "rm -rf dist && tsc && pnpm build:lib && pnpm build:lib:cjs && pnpm build:browser && pnpm build:clean && cp dist/index.d.ts dist/index.d.cts && sed '1,/^-->/d' AGENTS.npm.md > dist/AGENTS.md",
     "build:clean": "find dist -name '*.test.js' -delete && find dist -name '*.test.d.ts' -delete",
     "build:lib": "esbuild dist/index.js --bundle --splitting --platform=node --format=esm --minify --outdir=dist/bundle --chunk-names=chunks/[name]-[hash] --banner:js='import{createRequire} from\"node:module\";const require=createRequire(import.meta.url);' --external:diff --external:minimatch --external:sprintf-js --external:@mongodb-js/zstd --external:node-liblzma --external:seek-bzip",
     "build:lib:cjs": "esbuild dist/index.js --bundle --platform=node --format=cjs --minify --outfile=dist/bundle/index.cjs --external:diff --external:minimatch --external:sprintf-js --external:@mongodb-js/zstd --external:node-liblzma --external:seek-bzip",
     "build:browser": "esbuild dist/browser.js --bundle --platform=browser --format=esm --minify --outfile=dist/bundle/browser.js --external:diff --external:minimatch --external:sprintf-js --external:node:zlib --external:@mongodb-js/zstd --external:node-liblzma --external:seek-bzip --define:__BROWSER__=true --alias:node:async_hooks=./src/shims/browser-unsupported.js --alias:node:module=./src/shims/browser-unsupported.js",
-    "build:cli": "esbuild dist/cli/just-bash.js --bundle --splitting --platform=node --format=esm --minify --outdir=dist/bin --entry-names=[name] --chunk-names=chunks/[name]-[hash] --banner:js='#!/usr/bin/env node\nimport{createRequire} from\"node:module\";const require=createRequire(import.meta.url);' --external:@mongodb-js/zstd --external:node-liblzma --external:seek-bzip",
-    "build:shell": "esbuild dist/cli/shell.js --bundle --splitting --platform=node --format=esm --minify --outdir=dist/bin/shell --entry-names=[name] --chunk-names=chunks/[name]-[hash] --banner:js='#!/usr/bin/env node\nimport{createRequire} from\"node:module\";const require=createRequire(import.meta.url);' --external:@mongodb-js/zstd --external:node-liblzma --external:seek-bzip",
     "prepublishOnly": "pnpm test:dist",
     "validate": "pnpm lint && pnpm knip && pnpm typecheck && pnpm build && pnpm test:run && pnpm test:dist",
     "typecheck": "tsc --noEmit",
@@ -75,16 +67,14 @@
     "knip": "knip",
     "test": "vitest",
     "test:run": "vitest run --exclude src/security/fuzzing/",
-    "test:dist": "vitest run src/cli/just-bash.bundle.test.ts src/package-contents.test.ts",
+    "test:dist": "vitest run src/bundle.test.ts src/package-contents.test.ts",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:comparison": "vitest run --config vitest.comparison.config.ts",
     "test:comparison:record": "RECORD_FIXTURES=1 vitest run --config vitest.comparison.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:coverage:unit": "vitest run --config vitest.unit.config.ts --coverage",
     "test:fuzz": "vitest run src/security/fuzzing/",
-    "test:fuzz:long": "FUZZ_RUNS=10000 vitest run src/security/fuzzing/",
-    "shell": "tsx src/cli/shell.ts",
-    "dev:exec": "tsx src/cli/exec.ts"
+    "test:fuzz:long": "FUZZ_RUNS=10000 vitest run src/security/fuzzing/"
   },
   "keywords": [],
   "author": "Malte and Claude",

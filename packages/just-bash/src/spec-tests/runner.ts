@@ -14,7 +14,7 @@ import {
   type ParsedSpecFile,
   type TestCase,
 } from "./parser.js";
-import { testHelperCommands } from "./test-commands.js";
+import { registerTestHelperCommands } from "./test-commands.js";
 
 export interface TestResult {
   testCase: TestCase;
@@ -101,9 +101,9 @@ export async function runTestCase(
       TMPDIR: "/tmp",
       SH: "bash", // For tests that check which shell is running
     },
-    customCommands: testHelperCommands,
     ...options.bashEnvOptions,
   });
+  await registerTestHelperCommands(env);
 
   // Set up /tmp with sticky bit (mode 1777) for tests that check it
   await env.fs.chmod("/tmp", 0o1777);

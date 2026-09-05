@@ -3,7 +3,7 @@
  *
  * Usage: whoami
  *
- * In sandboxed environment, always returns "user".
+ * In sandboxed environment, always returns "sandbox".
  */
 
 import type {
@@ -16,8 +16,8 @@ async function whoamiExecute(
   _args: string[],
   _ctx: RuntimeCommandContext,
 ): Promise<ExecResult> {
-  // In sandboxed environment, always return "user"
-  return { stdout: "user\n", stderr: "", exitCode: 0 };
+  // In sandboxed environment, always return a generic virtual username.
+  return { stdout: "sandbox\n", stderr: "", exitCode: 0 };
 }
 
 export const whoami: RuntimeCommand = {

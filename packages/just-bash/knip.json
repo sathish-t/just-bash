@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["src/cli/just-bash.ts"],
+  "entry": ["src/index.ts", "src/browser.ts"],
   "project": ["src/**/*.ts"],
   "ignore": [
     "src/**/*.test.ts",

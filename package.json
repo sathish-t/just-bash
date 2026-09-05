@@ -14,8 +14,6 @@
     "test:comparison:record": "pnpm --filter './packages/*' test:comparison:record",
     "test:dist": "pnpm --filter './packages/*' test:dist",
     "check:deepsec-revalidation": "node scripts/check-deepsec-revalidation.mjs",
-    "shell": "pnpm --filter just-bash shell",
-    "dev:exec": "pnpm --filter just-bash dev:exec",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm --filter './packages/*' build && changeset publish"

@@ -32,7 +32,7 @@ just-bash is a TypeScript implementation of a bash interpreter with an in-memory
 
 The following components are **trusted** and outside the scope of just-bash's runtime defenses:
 
-- **Host-provided `fs`, `customCommands`, and transform plugins**: These are supplied by the embedding application. A compromised or malicious host hook can bypass all sandboxing by design — just-bash protects untrusted *scripts*, not untrusted *hosts*.
+- **Host-provided `fs` and transform plugins**: These are supplied by the embedding application. A compromised or malicious host hook can bypass all sandboxing by design — just-bash protects untrusted *scripts*, not untrusted *hosts*.
 - **The Node.js runtime and underlying OS**: just-bash assumes the Node.js binary, V8, and OS kernel are not compromised. Exploits targeting V8 internals or kernel vulnerabilities are out of scope.
 - **Dependencies**: Supply-chain attacks via npm dependencies are a deployment-level concern (addressed by lockfiles, audits, etc.), not a runtime defense.
 - **Direct host filesystem access**: The embedding application and other host processes are trusted not to mutate a `ReadWriteFs` root concurrently with sandbox operations. Node.js does not expose portable descriptor-relative filesystem APIs, so `ReadWriteFs` cannot make pathname validation, private-file metadata changes, and entry replacement atomic against an external host actor. Mutations submitted through overlapping `ReadWriteFs` roots are serialized within the process; unrelated roots are independent. This process-global queue is unbounded and not integrated with script cancellation, so a long mutation can delay later operations on overlapping roots after its requester is aborted. Content writes to special files are rejected to prevent blocking opens from holding an overlapping-root mutation slot indefinitely.
@@ -159,7 +159,7 @@ The following components are **trusted** and outside the scope of just-bash's ru
 | Host PID/UID | Expose process identity | Virtualized (processInfo option, defaults: pid=1, uid=1000) | `src/Bash.ts` |
 | hostname/whoami/uname | System enumeration | Return generic/virtual values | `src/commands/hostname/` |
 | Host timezone | `date` leaks host TZ via `%Z`/`%z` or time values | Defaults to UTC; only honored when the host explicitly sets `$TZ` to an IANA zone | `src/commands/date/date.ts` |
-| Error messages | Reveal file paths | `sanitizeError()` in FS layers + `sanitizeErrorMessage()` at all error choke points (builtin-dispatch, Bash.ts, CLI) | `src/fs/real-fs-utils.ts`, `src/interpreter/builtin-dispatch.ts`, `src/Bash.ts`, `src/cli/just-bash.ts` |
+| Error messages | Reveal file paths | `sanitizeError()` in FS layers + `sanitizeErrorMessage()` at all error choke points | `src/fs/real-fs-utils.ts`, `src/interpreter/builtin-dispatch.ts`, `src/Bash.ts` |
 | Timing side-channels | hrtime, cpuUsage, memoryUsage | Blocked by defense-in-depth | `src/security/blocked-globals.ts` |
 | performance.now() | Sub-ms timing for side-channels | Blocked by defense-in-depth; internal uses pre-capture `_performanceNow` | `src/security/blocked-globals.ts`, `src/timers.ts` |
 
@@ -264,7 +264,7 @@ FD exhaustion is now enforced: `checkFdLimit()` is called before every `fileDesc
 
 **Risk**: LOW (mitigated)
 
-Error sanitization is now systematic: `sanitizeError()` in FS layers (OverlayFs, ReadWriteFs) strips `.path` from `ErrnoException` objects, and `sanitizeErrorMessage()` strips OS paths, Node.js internal module paths (`node:internal/...`), and stack traces from raw error messages at all major choke points (builtin-dispatch catch-all, `Bash.exec()` error handlers including SecurityViolationError and ExecutionLimitError, CLI error outputs). Remaining risk is limited to custom commands that catch and re-format errors without using the sanitization function.
+Error sanitization is now systematic: `sanitizeError()` in FS layers (OverlayFs, ReadWriteFs) strips `.path` from `ErrnoException` objects, and `sanitizeErrorMessage()` strips OS paths, Node.js internal module paths (`node:internal/...`), and stack traces from raw error messages at all major choke points (builtin-dispatch catch-all and `Bash.exec()` error handlers including SecurityViolationError and ExecutionLimitError).
 
 ### 4.8 Heredoc Expansion Interaction
 

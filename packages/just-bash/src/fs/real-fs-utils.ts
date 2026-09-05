@@ -191,10 +191,6 @@ export function validateRootDirectory(root: string, fsName: string): void {
   }
 }
 
-// Re-export sanitizeErrorMessage from its own module (no node:fs dependency)
-// so existing callers that import from real-fs-utils.ts continue to work.
-export { sanitizeErrorMessage } from "./sanitize-error.js";
-
 /**
  * Sanitize a raw OS symlink target so it does not leak real filesystem paths
  * outside the sandbox.

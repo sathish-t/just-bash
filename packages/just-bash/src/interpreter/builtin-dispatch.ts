@@ -7,24 +7,14 @@
 
 import { isBrowserExcludedCommand } from "../commands/browser-excluded.js";
 import { latin1FromBytes, unsafeBytesFromLatin1 } from "../encoding.js";
-import {
-  createCommandExecutionBudget,
-  type ExecutionScope,
-} from "../execution-scope.js";
+import type { ExecutionScope } from "../execution-scope.js";
 import { getFileSystemIdentity, isFileSystemIdentity } from "../fs/identity.js";
 import { sanitizeErrorMessage } from "../fs/sanitize-error.js";
 import { awaitWithDefenseContext } from "../security/defense-context.js";
-import {
-  DefenseInDepthBox,
-  SecurityViolationError,
-} from "../security/defense-in-depth-box.js";
+import { SecurityViolationError } from "../security/defense-in-depth-box.js";
 import { _Proxy } from "../security/trusted-globals.js";
 import { _clearFiniteTimeout, _setTimeoutIfFinite } from "../timers.js";
-import type {
-  ExecResult,
-  RuntimeCommand,
-  RuntimeCommandContext,
-} from "../types.js";
+import type { ExecResult, RuntimeCommandContext } from "../types.js";
 import {
   handleBreak,
   handleCd,
@@ -100,8 +90,8 @@ interface RevocableCommandContext {
 }
 
 /**
- * Give host extensions capabilities that become unusable once their invocation
- * has ended. JavaScript promises cannot be forcibly terminated, but a late
+ * Give commands capabilities that become unusable once their invocation has
+ * ended. JavaScript promises cannot be forcibly terminated, but a late
  * continuation must not retain a working filesystem, environment, or shell
  * callback after its result has been abandoned.
  */
@@ -123,7 +113,7 @@ function createRevocableCommandContext(
 
   /**
    * Apply one revocation membrane to every capability that crosses from the
-   * interpreter into an extension. In particular, wrapping only the methods
+   * interpreter into a command. In particular, wrapping only the methods
    * on RuntimeCommandContext is insufficient: methods such as registerCleanup() and
    * enterDepth() return new callable capabilities which would otherwise remain
    * usable after the invocation has been cancelled.
@@ -309,7 +299,6 @@ function createRevocableCommandContext(
       wrapFunction(context.assignShellVariable),
     ),
     exec: dataDescriptor(wrapFunction(context.exec)),
-    origCommand: dataDescriptor(wrapFunction(context.origCommand)),
     execWithInheritedStdin: dataDescriptor(
       wrapFunction(context.execWithInheritedStdin),
     ),
@@ -350,7 +339,7 @@ async function runWithExecutionDeadline(
 ): Promise<ExecResult> {
   const remainingMs =
     rawScope.remainingTimeMs() ?? context.limits.maxExecutionTimeMs;
-  const graceMs = context.limits.maxExtensionCleanupTimeMs;
+  const graceMs = context.limits.maxCommandCleanupTimeMs;
   let deadlineTimer: ReturnType<typeof _setTimeoutIfFinite>;
   let abortListener: (() => void) | undefined;
   let graceTimer: ReturnType<typeof _setTimeoutIfFinite>;
@@ -824,7 +813,7 @@ export async function executeExternalCommand(
   // Most builtins need access to the full env to modify state
   const exportedEnv = buildExportedEnv();
 
-  // Give extensions one stable, revocable descriptor capability even when
+  // Give commands one stable, revocable descriptor capability even when
   // this invocation has not created any extra descriptors yet.
   ctx.state.fileDescriptors ??= new Map();
   const cmdCtx: RuntimeCommandContext = {
@@ -886,9 +875,7 @@ export async function executeExternalCommand(
       return effectiveStdin;
     },
     limits: ctx.limits,
-    executionScope: cmd.internalIsExtension
-      ? createCommandExecutionBudget(ctx.executionScope)
-      : ctx.executionScope,
+    executionScope: ctx.executionScope,
     exec: (script, options) => ctx.execFn(script, options, false),
     execWithInheritedStdin: (script, options) =>
       ctx.execFn(
@@ -909,47 +896,11 @@ export async function executeExternalCommand(
     signal: ctx.state.signal,
     requireDefenseContext: ctx.requireDefenseContext,
   };
-  const originalCommand = (cmd as RuntimeCommand).internalOriginalCommand;
-  let revokeOriginalCommandContext = () => {};
-  if (originalCommand) {
-    const originalContextDescriptors = Object.getOwnPropertyDescriptors(cmdCtx);
-    originalContextDescriptors.executionScope = {
-      value: ctx.executionScope,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    };
-    const originalCmdCtx = Object.defineProperties(
-      Object.create(Object.getPrototypeOf(cmdCtx)),
-      originalContextDescriptors,
-    ) as RuntimeCommandContext;
-    const originalRevocable = createRevocableCommandContext(
-      originalCmdCtx,
-      originalCommand.name,
-    );
-    const guardedOriginalCmdCtx = createDefenseAwareCommandContext(
-      originalRevocable.context,
-      originalCommand.name,
-    );
-    revokeOriginalCommandContext = originalRevocable.revoke;
-    cmdCtx.origCommand = (originalArgs) => {
-      const executeOriginal = () =>
-        originalCommand.execute(originalArgs, guardedOriginalCmdCtx);
-      return originalCommand.trusted
-        ? DefenseInDepthBox.runTrustedAsync(executeOriginal)
-        : DefenseInDepthBox.runUntrustedAsync(executeOriginal);
-    };
-  }
   const revocable = createRevocableCommandContext(cmdCtx, commandName);
   const guardedCmdCtx = createDefenseAwareCommandContext(
     revocable.context,
     commandName,
   );
-  const revokeCommandContexts = () => {
-    revocable.revoke();
-    revokeOriginalCommandContext();
-  };
-
   try {
     const runCommand = (): Promise<ExecResult> =>
       awaitWithDefenseContext(
@@ -963,16 +914,13 @@ export async function executeExternalCommand(
       runWithExecutionDeadline(
         runCommand,
         guardedCmdCtx,
-        revokeCommandContexts,
+        revocable.revoke,
         commandName,
         ctx.executionScope,
         ctx.state.signal,
       );
 
-    const commandResult = cmd.trusted
-      ? // Trusted host-extension commands may opt in to unrestricted globals.
-        await DefenseInDepthBox.runTrustedAsync(runBoundedCommand)
-      : await runBoundedCommand();
+    const commandResult = await runBoundedCommand();
     return {
       ...commandResult,
       internalStdinConsumed:

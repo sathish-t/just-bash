@@ -14,11 +14,6 @@ import "./timers.js";
 import { combineAbortSignals } from "./abort-signals.js";
 import { utf8ByteLength } from "./commands/printf/escapes.js";
 import { type CommandName, createLazyCommands } from "./commands/registry.js";
-import {
-  type CustomCommand,
-  createLazyCustomCommand,
-  isLazyCommand,
-} from "./custom-commands.js";
 import { encodeUtf8ToBytes, latin1FromBytes } from "./encoding.js";
 import { ExecutionScope } from "./execution-scope.js";
 import { InMemoryFs } from "./fs/in-memory-fs/in-memory-fs.js";
@@ -67,7 +62,6 @@ import type {
 } from "./transform/types.js";
 import type {
   BashExecResult,
-  Command,
   CommandRegistry,
   FeatureCoverageWriter,
   RuntimeCommand,
@@ -123,24 +117,6 @@ export interface BashOptions {
    * Useful for testing with mock clocks.
    */
   sleep?: (ms: number) => Promise<void>;
-  /**
-   * Custom commands to register alongside built-in commands.
-   * These take precedence over built-ins with the same name.
-   *
-   * @example
-   * ```ts
-   * import { defineCommand } from "just-bash";
-   *
-   * const hello = defineCommand("hello", async (args) => ({
-   *   stdout: `Hello, ${args[0] || "world"}!\n`,
-   *   stderr: "",
-   *   exitCode: 0,
-   * }));
-   *
-   * const bash = new Bash({ customCommands: [hello] });
-   * ```
-   */
-  customCommands?: CustomCommand[];
   /**
    * Optional logger for execution tracing.
    * When provided, logs exec commands (info), stdout (debug), stderr (info), and exit codes (info).
@@ -416,47 +392,13 @@ export class Bash {
     }
 
     for (const cmd of createLazyCommands(options.commands)) {
-      this.registerBundledCommand(cmd);
-    }
-
-    // Register custom commands (after built-ins so they can override)
-    if (options.customCommands) {
-      for (const cmd of options.customCommands) {
-        if (isLazyCommand(cmd)) {
-          const command = createLazyCustomCommand(cmd);
-          this.registerCommandInternal(command, true);
-        } else {
-          this.registerCommandInternal(cmd, true);
-        }
-      }
+      this.#registerCommand(cmd);
     }
   }
 
-  registerCommand(command: Command): void {
-    this.registerCommandInternal(command, true);
-  }
-
-  private registerBundledCommand(command: Command): void {
-    this.registerCommandInternal(command, false);
-  }
-
-  private registerCommandInternal(
-    command: Command,
-    isExtension: boolean,
-    trusted = isExtension ? (command.trusted ?? true) : command.trusted,
-  ): void {
-    const registeredCommand = this.commands.get(command.name);
-    const originalCommand = isExtension
-      ? (registeredCommand?.internalOriginalCommand ??
-        (registeredCommand && !registeredCommand.internalIsExtension
-          ? registeredCommand
-          : undefined))
-      : undefined;
+  #registerCommand(command: RuntimeCommand): void {
     const runtimeCommand: RuntimeCommand = {
       name: command.name,
-      trusted,
-      internalIsExtension: isExtension,
-      internalOriginalCommand: originalCommand,
       execute: (args, context) => command.execute(args, context),
     };
     this.commands.set(command.name, runtimeCommand);
@@ -532,7 +474,7 @@ export class Bash {
     try {
       await executionScope.close();
     } catch {
-      // Cleanup callbacks are extension code. Convert their failure into a
+      // Convert cleanup callback failures into a
       // shell result so Bash.exec() keeps its result-oriented error contract.
       finalResult = {
         ...result,

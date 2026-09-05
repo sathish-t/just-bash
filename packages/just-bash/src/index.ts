@@ -18,18 +18,6 @@ export type {
   CommandName,
 } from "./commands/registry.js";
 export { getCommandNames } from "./commands/registry.js";
-// Custom commands API
-export type {
-  CommandContextOptions,
-  CustomCommand,
-  LazyCommand,
-} from "./custom-commands.js";
-export {
-  createCommandContext,
-  defineCommand,
-} from "./custom-commands.js";
-// Byte/text boundary helpers — required by custom commands that read
-// `ctx.stdin` (an opaque `ByteString`).
 export type { ByteString, OutputKind } from "./encoding.js";
 export {
   bytesOutput,
@@ -72,14 +60,6 @@ export {
 } from "./fs/read-write-fs/index.js";
 // Parser
 export { parse } from "./parser/parser.js";
-export type {
-  CommandFinished as SandboxCommandFinished,
-  OutputMessage,
-  SandboxOptions,
-  WriteFilesInput,
-} from "./sandbox/index.js";
-// Vercel Sandbox API compatible exports
-export { Command as SandboxCommand, Sandbox } from "./sandbox/index.js";
 // Security module - defense-in-depth
 export type {
   DefenseInDepthConfig,
@@ -114,9 +94,6 @@ export type {
 } from "./transform/types.js";
 export type {
   BashExecResult,
-  Command,
-  CommandContext,
   ExecResult,
   IFileSystem,
-  ResolvedCommandContext,
 } from "./types.js";

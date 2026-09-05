@@ -5,69 +5,84 @@
  * NOTE: Standard Unix commands (tac, od, hostname) are now in src/commands/
  */
 
-import { defineCommand } from "../custom-commands.js";
+import type { Bash } from "../Bash.js";
 import { latin1FromBytes } from "../encoding.js";
-import type { Command } from "../types.js";
+import type {
+  Command,
+  ExecResult,
+  RuntimeCommand,
+  RuntimeCommandContext,
+} from "../types.js";
+
+function defineTestCommand(
+  name: string,
+  execute: (args: string[], ctx: RuntimeCommandContext) => Promise<ExecResult>,
+): Command {
+  return { name, execute };
+}
 
 // argv.py - prints arguments in Python 2 repr() format: ['arg1', "arg with '"]
 // Python uses single quotes by default, double quotes when string contains single quotes
 // Python 2 escapes non-printable and non-ASCII bytes as \xNN
-export const argvCommand: Command = defineCommand("argv.py", async (args) => {
-  const formatted = args.map((arg) => {
-    // Convert string to Python 2 repr() format
-    // Process character by character, escaping as needed
-    let escaped = "";
-    for (let i = 0; i < arg.length; i++) {
-      const char = arg[i];
-      const code = arg.charCodeAt(i);
+export const argvCommand: Command = defineTestCommand(
+  "argv.py",
+  async (args) => {
+    const formatted = args.map((arg) => {
+      // Convert string to Python 2 repr() format
+      // Process character by character, escaping as needed
+      let escaped = "";
+      for (let i = 0; i < arg.length; i++) {
+        const char = arg[i];
+        const code = arg.charCodeAt(i);
 
-      if (char === "\\") {
-        escaped += "\\\\";
-      } else if (char === "\n") {
-        escaped += "\\n";
-      } else if (char === "\r") {
-        escaped += "\\r";
-      } else if (char === "\t") {
-        escaped += "\\t";
-      } else if (code < 0x20 || code === 0x7f) {
-        // Non-printable ASCII control characters -> \xNN
-        escaped += `\\x${code.toString(16).padStart(2, "0")}`;
-      } else if (code >= 0x80 && code <= 0xff) {
-        // Latin-1 range (U+0080-U+00FF): show as single \xNN
-        // This matches Python 2 behavior where bytes are 1:1 with codepoints
-        escaped += `\\x${code.toString(16).padStart(2, "0")}`;
-      } else if (code >= 0x100) {
-        // Non-Latin-1 Unicode: encode as UTF-8 bytes, then escape each byte as \xNN
-        // This matches Python 2 behavior with byte strings
-        const encoder = new TextEncoder();
-        const bytes = encoder.encode(char);
-        for (const byte of bytes) {
-          escaped += `\\x${byte.toString(16).padStart(2, "0")}`;
+        if (char === "\\") {
+          escaped += "\\\\";
+        } else if (char === "\n") {
+          escaped += "\\n";
+        } else if (char === "\r") {
+          escaped += "\\r";
+        } else if (char === "\t") {
+          escaped += "\\t";
+        } else if (code < 0x20 || code === 0x7f) {
+          // Non-printable ASCII control characters -> \xNN
+          escaped += `\\x${code.toString(16).padStart(2, "0")}`;
+        } else if (code >= 0x80 && code <= 0xff) {
+          // Latin-1 range (U+0080-U+00FF): show as single \xNN
+          // This matches Python 2 behavior where bytes are 1:1 with codepoints
+          escaped += `\\x${code.toString(16).padStart(2, "0")}`;
+        } else if (code >= 0x100) {
+          // Non-Latin-1 Unicode: encode as UTF-8 bytes, then escape each byte as \xNN
+          // This matches Python 2 behavior with byte strings
+          const encoder = new TextEncoder();
+          const bytes = encoder.encode(char);
+          for (const byte of bytes) {
+            escaped += `\\x${byte.toString(16).padStart(2, "0")}`;
+          }
+        } else {
+          // Printable ASCII
+          escaped += char;
         }
-      } else {
-        // Printable ASCII
-        escaped += char;
       }
-    }
 
-    const hasSingleQuote = arg.includes("'");
-    const hasDoubleQuote = arg.includes('"');
+      const hasSingleQuote = arg.includes("'");
+      const hasDoubleQuote = arg.includes('"');
 
-    if (hasSingleQuote && !hasDoubleQuote) {
-      // Use double quotes when string contains single quotes but no double quotes
-      return `"${escaped}"`;
-    }
-    // Default: use single quotes (escape single quotes)
-    escaped = escaped.replace(/'/g, "\\'");
-    return `'${escaped}'`;
-  });
-  return { stdout: `[${formatted.join(", ")}]\n`, stderr: "", exitCode: 0 };
-});
+      if (hasSingleQuote && !hasDoubleQuote) {
+        // Use double quotes when string contains single quotes but no double quotes
+        return `"${escaped}"`;
+      }
+      // Default: use single quotes (escape single quotes)
+      escaped = escaped.replace(/'/g, "\\'");
+      return `'${escaped}'`;
+    });
+    return { stdout: `[${formatted.join(", ")}]\n`, stderr: "", exitCode: 0 };
+  },
+);
 
 // printenv.py - prints environment variable values, one per line
 // Prints "None" for variables that are not set (matching Python's printenv.py)
 // Uses exportedEnv (only exported variables) to match bash behavior
-export const printenvCommand: Command = defineCommand(
+export const printenvCommand: Command = defineTestCommand(
   "printenv.py",
   async (args, ctx) => {
     // Use exportedEnv if available (only exported vars), fall back to full env
@@ -88,7 +103,7 @@ export const printenvCommand: Command = defineCommand(
 
 // stdout_stderr.py - outputs to both stdout and stderr
 // If an argument is provided, it outputs that to stdout instead of "STDOUT"
-export const stdoutStderrCommand: Command = defineCommand(
+export const stdoutStderrCommand: Command = defineTestCommand(
   "stdout_stderr.py",
   async (args) => {
     const stdout = args.length > 0 ? `${args[0]}\n` : "STDOUT\n";
@@ -98,7 +113,7 @@ export const stdoutStderrCommand: Command = defineCommand(
 
 // read_from_fd.py - reads from specified file descriptors
 // Arguments are FD numbers. For each FD, outputs "<fd>: <content>" (without trailing newline from content)
-export const readFromFdCommand: Command = defineCommand(
+export const readFromFdCommand: Command = defineTestCommand(
   "read_from_fd.py",
   async (args, ctx) => {
     const results: string[] = [];
@@ -138,3 +153,16 @@ export const testHelperCommands: Command[] = [
   stdoutStderrCommand,
   readFromFdCommand,
 ];
+
+/** Installs Oil's Python-script replacements into a spec-test Bash instance. */
+export async function registerTestHelperCommands(bash: Bash): Promise<void> {
+  const commands = (
+    bash as unknown as { commands: Map<string, RuntimeCommand> }
+  ).commands;
+  for (const command of testHelperCommands) {
+    commands.set(command.name, command);
+    const stub = `#!/bin/bash\n# Spec test helper: ${command.name}\n`;
+    await bash.fs.writeFile(`/bin/${command.name}`, stub);
+    await bash.fs.writeFile(`/usr/bin/${command.name}`, stub);
+  }
+}

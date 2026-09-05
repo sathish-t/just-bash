@@ -221,15 +221,6 @@ export function createDefenseAwareCommandContext(
     );
   }
 
-  if (ctx.origCommand) {
-    wrappedCtx.origCommand = wrapFunction(
-      ctx.origCommand,
-      ctx.requireDefenseContext,
-      component,
-      "origCommand",
-    );
-  }
-
   if (ctx.sleep) {
     wrappedCtx.sleep = wrapFunction(
       ctx.sleep,

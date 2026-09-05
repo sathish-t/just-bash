@@ -302,7 +302,7 @@ export class ExecutionScope {
    * bytes carried by internal accounting metadata; callers must not use it to
    * refund arbitrary output.
    */
-  /** @internal Use relinquishPipelineOutput; the authority prevents extensions
+  /** @internal Use relinquishPipelineOutput; the authority prevents commands
    * that receive an ExecutionScope from refunding their own output. */
   relinquishOutput(bytes: number, site: string, authority: object): void {
     this.assertUsable();
@@ -398,7 +398,7 @@ export class ExecutionScope {
     if (this.closed) return;
     this.closed = true;
     const errors: unknown[] = [];
-    const cleanupDeadline = Date.now() + this.limits.maxExtensionCleanupTimeMs;
+    const cleanupDeadline = Date.now() + this.limits.maxCommandCleanupTimeMs;
     for (let index = this.cleanupCallbacks.length - 1; index >= 0; index--) {
       try {
         const remaining = cleanupDeadline - Date.now();
@@ -456,42 +456,8 @@ export class ExecutionScope {
   }
 }
 
-/** Build a least-authority view for command implementations. */
-export function createCommandExecutionBudget(
-  scope: ExecutionScope,
-): CommandExecutionBudget {
-  const budget = Object.create(null) as CommandExecutionBudget;
-  Object.defineProperties(budget, {
-    remainingLiveBytes: {
-      enumerable: true,
-      get: () => scope.remainingLiveBytes,
-    },
-    consumeWork: { enumerable: true, value: scope.consumeWork.bind(scope) },
-    consumeLimited: {
-      enumerable: true,
-      value: scope.consumeLimited.bind(scope),
-    },
-    consumeInput: { enumerable: true, value: scope.consumeInput.bind(scope) },
-    reserveBytes: { enumerable: true, value: scope.reserveBytes.bind(scope) },
-    enterDepth: { enumerable: true, value: scope.enterDepth.bind(scope) },
-    throwIfAborted: {
-      enumerable: true,
-      value: scope.throwIfAborted.bind(scope),
-    },
-    remainingTimeMs: {
-      enumerable: true,
-      value: scope.remainingTimeMs.bind(scope),
-    },
-    registerCleanup: {
-      enumerable: true,
-      value: scope.registerCleanup.bind(scope),
-    },
-  });
-  return Object.freeze(budget);
-}
-
 /** Release a checked pipeline intermediate without exposing refund authority
- * through the ExecutionScope capability supplied to custom commands. */
+ * through command execution budgets. */
 export function relinquishPipelineOutput(
   scope: ExecutionScope,
   bytes: number,

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { Bash } from "../Bash.js";
-import { defineCommand } from "../custom-commands.js";
 import { utf8ByteLength } from "../encoding.js";
 import { ExecutionLimitError } from "./errors.js";
 
@@ -149,22 +148,6 @@ describe("DeepSec follow-up interpreter resource limits", () => {
 
     expect(result.exitCode).toBe(ExecutionLimitError.EXIT_CODE);
     expect(result.stderr).toContain("glob_operations work limit exceeded (3)");
-  });
-
-  it("charges consumed pipeline intermediates before forwarding them", async () => {
-    const produce = defineCommand(
-      "produce",
-      async () => ({ stdout: "123456789", stderr: "", exitCode: 0 }),
-      { trusted: true },
-    );
-    const bash = new Bash({
-      customCommands: [produce],
-      executionLimits: { maxOutputSize: 8 },
-    });
-    const result = await bash.exec("produce | wc -c");
-
-    expect(result.exitCode).toBe(ExecutionLimitError.EXIT_CODE);
-    expect(result.stderr).toContain("pipeline: total output size exceeded");
   });
 
   it("does not mutate frozen empty results while accounting pipelines", async () => {

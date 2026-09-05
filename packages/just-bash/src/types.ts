@@ -199,11 +199,6 @@ export interface RuntimeCommandContext {
    * @param options - Required options including `cwd` to prevent directory bugs
    */
   exec?: (command: string, options: CommandExecOptions) => Promise<ExecResult>;
-  /**
-   * Invoke the bundled command shadowed by the current custom command.
-   * Available only when a custom command overrides a bundled command.
-   */
-  origCommand?: (args: string[]) => Promise<ExecResult>;
   /** @internal Closed path for forwarding this command's already-accounted stdin. */
   execWithInheritedStdin?: (
     command: string,
@@ -256,37 +251,12 @@ export interface RuntimeCommandContext {
   requireDefenseContext?: boolean;
 }
 
-/** Legacy standalone context shape used by direct command invocations. */
-export type CommandContext = Omit<
-  RuntimeCommandContext,
-  "limits" | "executionScope"
-> & {
-  /** Fully resolved when Bash dispatches the command; optional for legacy direct calls. */
-  limits?: Required<ExecutionLimits>;
-  /** Shared accounting is only available for interpreter-dispatched commands. */
-  executionScope?: CommandExecutionBudget;
-};
-
-/** Context supplied by Bash when dispatching a registered command. */
-export type ResolvedCommandContext = RuntimeCommandContext;
-
 export interface Command {
   name: string;
-  /**
-   * Host-provided commands are trusted by default for compatibility. Set this
-   * to false to select the restricted extension boundary.
-   * Built-in commands should generally remain untrusted and use explicit
-   * trusted wrappers only at narrow infrastructure boundaries.
-   */
-  trusted?: boolean;
-  /** @internal Marks host extensions that receive a least-authority budget. */
-  internalIsExtension?: boolean;
-  execute(args: string[], ctx: ResolvedCommandContext): Promise<ExecResult>;
+  execute(args: string[], ctx: RuntimeCommandContext): Promise<ExecResult>;
 }
 
 export interface RuntimeCommand extends Omit<Command, "execute"> {
-  /** @internal Bundled command shadowed by this host extension. */
-  internalOriginalCommand?: RuntimeCommand;
   execute(args: string[], ctx: RuntimeCommandContext): Promise<ExecResult>;
 }
 export type CommandRegistry = Map<string, RuntimeCommand>;
